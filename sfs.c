@@ -46,8 +46,308 @@
  * Introduced in version 2.3
  * Changed in version 2.6
  */
+
+//Assuming 100 mib file and 512 byte discs
+static int numBlocks = 204800;
+
+static char freeArray[204800];
+
+static int blockSize=516;
+
+static int fdCount=0;
+
+static inode* root;
+
+typedef struct _pnode {
+	char* ptrs[64];
+} pnode;
+
+typedef struct _inode {
+	char mode;
+	int fileSize;
+	uid_t userId;
+	gid_t groupId;
+	char path[64];
+
+	void* directMappedPtrs[48];
+
+	//p nodes not used for directories
+	pnode* singleIndirectionPtrs[4];
+
+	pnode* dobuleIndirectionPtrs[2];
+
+
+} inode;
+
+
+//Struct to hold inodes. Used in hashtable
+typedef struct node {
+	inode* inode;
+	struct node* next;
+	int fd;
+} Node;
+
+
+
+typedef struct hashtable {
+
+	//capacityof hashtable array
+	int capacity;
+
+	//Load factor of hashtable
+	double loadFactor;
+
+	//Number of elements in hashtable
+	int numElements;
+
+	//Array of node*s
+	Node** nodeArray;
+
+} Hashtable;
+
+/*Function to generate hashcode. The hash function
+is the sum of all the ascii values of thecharacters 
+in the word % the capacity of the hashtable;
+*/
+/*int hashCodePath(Hashtable* table, char* word) {
+	char* ptr=word;
+	int sum=0;
+	while(*ptr!='\0') {
+		sum+=(int)*ptr;
+		ptr++;
+	}
+	int code=sum%(table->capacity);
+	return code;
+}*/
+
+int hashCodeFd(Hashtable* table, int fd) {
+	int code=(-1*fd)%(table->capacity);
+	return code;
+}
+
+Node* searchByFD(Hashtable* table, int fd ) {
+	int hashcode=hashCodeFd(table,fd);
+	Node** nodeArray=table->nodeArray;
+	Node* ptr=nodeArray[hashcode];
+	while(ptr!=NULL) {
+		if(fd==ptr->fd) {
+			return ptr;
+		}
+		ptr=ptr->next;
+	}
+
+	return NULL;
+}
+
+void rebalance(Hashtable* table);
+/*
+	Function to insert a node into the hashtable
+*/
+
+void insert(Hashtable* table, Node* node) {
+
+	//Generate a hashcode
+	int hashcode=hashCodeFd(table, node->fd);
+
+	node->next=table->nodeArray[hashcode];
+
+	//Insert the new node to the front of the list
+	table->nodeArray[hashcode]=node;
+
+	//Update the number of elements in the hashtable
+	table->numElements++;
+
+	//If the ratio of elements to capacity of the hashtable is to great, rebalance
+	if((double)(table->numElements)/(double)(table->capacity)>table->loadFactor) {
+		rebalance(table);
+	}
+}
+
+/*
+	Function to delete a node from the hashtable given a file descriptor
+*/
+
+void delete(Hashtable* table, int fd) {
+
+	//Generate hashcode
+	int hashcode=hashCodeFd(table,fd);
+
+	//Array of node*s
+	Node** nodeArray=table->nodeArray;
+
+	//Linked List of Node*s
+	Node* ptr=nodeArray[hashcode];
+
+	//Search throihg list for the fd and remove it from the table and free it
+	Node* prev=NULL;
+	while(ptr!=NULL) {
+		if(fd==ptr->fd) {
+			if(prev==NULL) {
+				nodeArray[hashcode]=ptr->next;
+				table->numElements--;
+			} else {
+				prev->next=ptr->next;
+				table->numElements--;
+			}
+
+			free(ptr);
+		}
+		prev=ptr;
+		ptr=ptr->next;
+	}
+
+}
+
+
+
+
+/*Function to create a hashtable with a inputted capacity
+*/
+Hashtable* hashtableCreate(int size) {
+
+	Hashtable* output=(Hashtable*)malloc(sizeof(Hashtable));
+
+	if(output==NULL) {
+		fprintf(stderr, "Error allocating memory to hashtable. Exiting...\n");
+		exit(-1);
+	}
+
+	//Initial capacity is inputted size
+	output->capacity=size;
+
+	//Load factor is 1
+	output->loadFactor=1.0;
+
+	//Intial number of elements is 0
+	output->numElements=0;
+
+
+	//Allocate memory for an array of node pointers
+	Node** nodeArray=(Node**)malloc(sizeof(Node*)*size);
+
+	if (nodeArray==NULL)
+	{
+		fprintf(stderr, "Error allocating memory to array of Node pointers. Exiting...\n");
+		exit(-1);
+	}
+
+	//Loop to intialize the hashtable array to empty Nodes
+	int i=0;
+	for(i;i<size;i++) {
+		nodeArray[i]=NULL;
+	}
+
+	output->nodeArray=nodeArray;
+
+	return output;
+
+}
+
+/*
+	Function to rebalance the hashtable
+*/
+
+void rebalance(Hashtable* table) {
+
+	//Pointer to temporary hash table
+	Hashtable* newTable=hashtableCreate(table->capacity*2);
+
+	int i=0;
+
+	for(i;i<table->capacity;i++) {
+		Node* ptr=table->nodeArray[i];
+		while(ptr!=NULL) {
+			Node* next=ptr->next;
+
+			int hashcode=hashCodeFd(newTable, ptr->fd);
+			ptr->next=newTable->nodeArray[hashcode];
+			newTable->nodeArray[hashcode]=ptr;
+			ptr=next;
+			newTable->numElements++;
+		}
+	}
+
+	free(table->nodeArray);
+
+	//Set the hashtable pointed to by the inputted pointer to be the new table
+	*table=*newTable;
+
+
+	//Free pointer to temporary table
+	free(newTable);
+}
+
+//Search for an inode with a path
+/*inode* searchPath(Hashtable* table, char* path) {
+	int hashcode=hashCodePath(table,path);
+	Node** nodeArray=table->nodeArray;
+	Node* ptr=nodeArray[hashcode];
+	while(ptr!=NULL) {
+		if(ptr->inode==NULL) {
+			return NULL;
+		}
+		if(strcmp(path,ptr->inode->path)==0) {
+			return ptr->inode;
+		}
+		ptr=ptr->next;
+	}
+
+	return NULL;
+}*/
+
+
+/*Function to insert a inode into the hashtable
+*/
+/*void insertPathTable(Hashtable* table, inode* node) {
+
+	//Check to see if the inode already exists in the hashtable
+	inode* exisitinginode=searchPath(table,node->path);
+	if(exisitinginode!=NULL){
+
+		fprintf(stderr, "inode already exists in table\n");
+		return;
+	}
+
+	//Else generate a hashcode
+	int hashcode=hashCodePath(table, node->path);
+
+	//Allocate dynamic memory and initalize a new Node
+	Node* newNode=(Node*)malloc(sizeof(Node));
+	newNode->inode=node;
+	newNode->next=table->nodeArray[hashcode];
+
+	//Insert the new node to the front of the list
+	table->nodeArray[hashcode]=newNode;
+
+	//Update the number of elements in the hashtable
+	table->numElements++;
+
+	//If the ratio of elements to capacity of the hashtable is to great, rebalance
+	if((double)(table->numElements)/(double)(table->capacity)>table->loadFactor) {
+		rebalance(table);
+	}
+}*/
+
+
+
+
+
+
+
+
 void *sfs_init(struct fuse_conn_info *conn)
 {	
+	//Initialize the free array
+	int i=0;
+	for(i;i<numBlocks;i++) {
+		freeArray[i]=0;
+	}
+
+
+
+
+
+
     fprintf(stderr, "in bb-init\n");
     log_msg("\nsfs_init()\n");
     
@@ -315,6 +615,8 @@ void sfs_usage()
 
 int main(int argc, char *argv[])
 {
+	printf("i node size : %d\n", sizeof(inode) );
+	printf("p node size : %d\n", sizeof(pnode) );
     int fuse_stat;
     struct sfs_state *sfs_data;
     
