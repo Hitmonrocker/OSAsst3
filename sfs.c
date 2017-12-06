@@ -56,28 +56,27 @@ static int blockSize=516;
 
 static int fdCount=0;
 
-static inode* root;
 
 typedef struct _pnode {
-	char* ptrs[64];
+	int ptrs[128];
 } pnode;
 
 typedef struct _inode {
 	char mode;
-	int fileSize;
+	int size;
+	int blockNumber;
 	uid_t userId;
 	gid_t groupId;
 	char path[64];
 
-	void* directMappedPtrs[48];
+	int directMappedPtrs[104];
 
 	//p nodes not used for directories
-	pnode* singleIndirectionPtrs[4];
-
-	pnode* dobuleIndirectionPtrs[2];
-
+	int singleIndirectionPtrs[3];
 
 } inode;
+
+static inode* root;
 
 
 //Struct to hold inodes. Used in hashtable
@@ -337,16 +336,40 @@ void rebalance(Hashtable* table) {
 
 void *sfs_init(struct fuse_conn_info *conn)
 {	
-	//Initialize the free array
+	struct sfs_state* state = SFS_DATA;
+
+	char* disk=state->diskfile;
+
+	inode* root=malloc(sizeof(inode));
+
+	root->mode=0;
+	root->blockNumber=0;
+	root->size=0;
+	root->userId=getuid();
+	root->groupId=-getegid();
+	memcpy(root->path,"root",4);
+
 	int i=0;
+	for(i;i<100;i++) {
+		root->directMappedPtrs[i]=-1;
+	}
+
+	i=0;
+	for(i;i<3;i++) {
+		root->singleIndirectionPtrs[i]=-1;
+	}
+
+	disk_open(disk);
+
+	block_write(0,(void*)root);
+
+	//Initialize the free array
+
+	freeArray[0]=1;
+	i=1;
 	for(i;i<numBlocks;i++) {
 		freeArray[i]=0;
 	}
-
-
-
-
-
 
     fprintf(stderr, "in bb-init\n");
     log_msg("\nsfs_init()\n");
@@ -354,7 +377,7 @@ void *sfs_init(struct fuse_conn_info *conn)
     log_conn(conn);
     log_fuse_context(fuse_get_context());
 
-    return SFS_DATA;
+    return state;
 }
 
 /**
@@ -382,6 +405,16 @@ int sfs_getattr(const char *path, struct stat *statbuf)
     
     log_msg("\nsfs_getattr(path=\"%s\", statbuf=0x%08x)\n",
 	  path, statbuf);
+
+    statbuf->st_uid = getuid();
+    statbuf->st_gid = getegid();
+    statbuf->st_nlink = 1;
+    statbuf->st_ino = 0;
+    statbuf->st_mode=S_IFDIR | S_IRWXU | S_IRWXG | S_IRWXO;
+
+
+
+
     
     return retstat;
 }
