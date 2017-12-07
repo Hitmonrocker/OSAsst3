@@ -56,26 +56,48 @@ static int blockSize=516;
 
 static int fdCount=0;
 
+static int maxFileSizeBlocks=16612;
+
+static int numInodes=1000;
+
+
 
 typedef struct _pnode {
 	int ptrs[128];
 } pnode;
 
 typedef struct _inode {
+	//0 means directory 1 means file 2 means not in use
 	char mode;
+
+	//size in bytes
 	int size;
+
+	//block number on the disk, also the inode number
 	int blockNumber;
+
 	uid_t userId;
 	gid_t groupId;
+
+	//file name
 	char path[64];
 
-	int directMappedPtrs[104];
+	//last modified timestamp
+	time_t timeStamp;
+
+	int permissions;
+
+	int directMappedPtrs[100];
 
 	//p nodes not used for directories
-	int singleIndirectionPtrs[3];
+	int singleIndirectionPtrs[1];
+
+	int doubleIndirectionPtrs[1];
 
 } inode;
 
+
+//root inode of the file system
 static inode* root;
 
 
@@ -340,28 +362,54 @@ void *sfs_init(struct fuse_conn_info *conn)
 
 	char* disk=state->diskfile;
 
-	inode* root=malloc(sizeof(inode));
+	//set up the root inode
+
+	root=malloc(sizeof(inode));
 
 	root->mode=0;
 	root->blockNumber=0;
-	root->size=0;
+	root->size=512;
 	root->userId=getuid();
-	root->groupId=-getegid();
-	memcpy(root->path,"root",4);
+	root->groupId=getegid();
+	root->permissions=S_IFDIR | S_IRWXU;
+	root->timeStamp=time(NULL);
+	root->singleIndirectionPtrs[0]=-1;
+	root->doubleIndirectionPtrs[0]=-1;
+	memcpy(root->path,"/",1);
 
 	int i=0;
 	for(i;i<100;i++) {
 		root->directMappedPtrs[i]=-1;
 	}
 
-	i=0;
-	for(i;i<3;i++) {
-		root->singleIndirectionPtrs[i]=-1;
-	}
 
 	disk_open(disk);
 
+	//write the root inode to disk
+
 	block_write(0,(void*)root);
+
+	//set up all inodes and write them to the disk
+	i=1;
+	for(i;i<1000;i++) {
+		inode newInode;
+		newInode.mode=2;
+		newInode.blockNumber=i;
+		newInode.size=-1;
+		newInode.userId=getuid();
+		newInode.groupId=-getegid();
+		newInode.permissions=-1;
+		newInode.timeStamp=time(NULL);
+		newInode.singleIndirectionPtrs[0]=-1;
+		newInode.doubleIndirectionPtrs[0]=-1;
+		int j=0;
+		for(j;j<100;j++) {
+			newInode.directMappedPtrs[j]=-1;
+		}
+
+		block_write(i,&newInode);
+
+	}
 
 	//Initialize the free array
 
@@ -376,6 +424,8 @@ void *sfs_init(struct fuse_conn_info *conn)
     
     log_conn(conn);
     log_fuse_context(fuse_get_context());
+
+    disk_close();
 
     return state;
 }
@@ -406,11 +456,19 @@ int sfs_getattr(const char *path, struct stat *statbuf)
     log_msg("\nsfs_getattr(path=\"%s\", statbuf=0x%08x)\n",
 	  path, statbuf);
 
-    statbuf->st_uid = getuid();
-    statbuf->st_gid = getegid();
-    statbuf->st_nlink = 1;
-    statbuf->st_ino = 0;
-    statbuf->st_mode=S_IFDIR | S_IRWXU | S_IRWXG | S_IRWXO;
+    //If the inode is the root directory
+    if ((strlen(path)==1)&&path[0]=='/') {
+    	statbuf->st_uid = root->userId;
+    	statbuf->st_gid = root->groupId;
+    	statbuf->st_nlink = 1;
+    	statbuf->st_ino = 0;
+    	statbuf->st_mode=root->permissions;
+    	statbuf->st_size=root->size;
+    	statbuf->st_mtime=root->timeStamp;
+    }
+
+    //find the inode based off of the path and update statbuf
+
 
 
 
@@ -511,7 +569,6 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
     int retstat = 0;
     log_msg("\nsfs_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi);
-
    
     return retstat;
 }
