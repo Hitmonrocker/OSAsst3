@@ -89,7 +89,6 @@ typedef struct _inode {
 
 	int directMappedPtrs[100];
 
-	//p nodes not used for directories
 	int singleIndirectionPtrs[1];
 
 	int doubleIndirectionPtrs[1];
@@ -377,7 +376,9 @@ void *sfs_init(struct fuse_conn_info *conn)
 	root->doubleIndirectionPtrs[0]=-1;
 	memcpy(root->path,"/",1);
 
-	int i=0;
+	root->directMappedPtrs[0]=0;
+
+	int i=1;
 	for(i;i<100;i++) {
 		root->directMappedPtrs[i]=-1;
 	}
@@ -461,11 +462,11 @@ int sfs_getattr(const char *path, struct stat *statbuf)
     	statbuf->st_uid = root->userId;
     	statbuf->st_gid = root->groupId;
     	statbuf->st_nlink = 1;
-    	statbuf->st_ino = 0;
     	statbuf->st_mode=root->permissions;
     	statbuf->st_size=root->size;
     	statbuf->st_mtime=root->timeStamp;
     }
+
 
     //find the inode based off of the path and update statbuf
 
