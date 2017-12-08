@@ -99,262 +99,6 @@ typedef struct _inode {
 //root inode of the file system
 static inode* root;
 
-
-//Struct to hold inodes. Used in hashtable
-typedef struct node {
-	inode* inode;
-	struct node* next;
-	int fd;
-} Node;
-
-
-
-typedef struct hashtable {
-
-	//capacityof hashtable array
-	int capacity;
-
-	//Load factor of hashtable
-	double loadFactor;
-
-	//Number of elements in hashtable
-	int numElements;
-
-	//Array of node*s
-	Node** nodeArray;
-
-} Hashtable;
-
-/*Function to generate hashcode. The hash function
-is the sum of all the ascii values of thecharacters 
-in the word % the capacity of the hashtable;
-*/
-/*int hashCodePath(Hashtable* table, char* word) {
-	char* ptr=word;
-	int sum=0;
-	while(*ptr!='\0') {
-		sum+=(int)*ptr;
-		ptr++;
-	}
-	int code=sum%(table->capacity);
-	return code;
-}*/
-
-int hashCodeFd(Hashtable* table, int fd) {
-	int code=(-1*fd)%(table->capacity);
-	return code;
-}
-
-Node* searchByFD(Hashtable* table, int fd ) {
-	int hashcode=hashCodeFd(table,fd);
-	Node** nodeArray=table->nodeArray;
-	Node* ptr=nodeArray[hashcode];
-	while(ptr!=NULL) {
-		if(fd==ptr->fd) {
-			return ptr;
-		}
-		ptr=ptr->next;
-	}
-
-	return NULL;
-}
-
-void rebalance(Hashtable* table);
-/*
-	Function to insert a node into the hashtable
-*/
-
-void insert(Hashtable* table, Node* node) {
-
-	//Generate a hashcode
-	int hashcode=hashCodeFd(table, node->fd);
-
-	node->next=table->nodeArray[hashcode];
-
-	//Insert the new node to the front of the list
-	table->nodeArray[hashcode]=node;
-
-	//Update the number of elements in the hashtable
-	table->numElements++;
-
-	//If the ratio of elements to capacity of the hashtable is to great, rebalance
-	if((double)(table->numElements)/(double)(table->capacity)>table->loadFactor) {
-		rebalance(table);
-	}
-}
-
-/*
-	Function to delete a node from the hashtable given a file descriptor
-*/
-
-void delete(Hashtable* table, int fd) {
-
-	//Generate hashcode
-	int hashcode=hashCodeFd(table,fd);
-
-	//Array of node*s
-	Node** nodeArray=table->nodeArray;
-
-	//Linked List of Node*s
-	Node* ptr=nodeArray[hashcode];
-
-	//Search throihg list for the fd and remove it from the table and free it
-	Node* prev=NULL;
-	while(ptr!=NULL) {
-		if(fd==ptr->fd) {
-			if(prev==NULL) {
-				nodeArray[hashcode]=ptr->next;
-				table->numElements--;
-			} else {
-				prev->next=ptr->next;
-				table->numElements--;
-			}
-
-			free(ptr);
-		}
-		prev=ptr;
-		ptr=ptr->next;
-	}
-
-}
-
-
-
-
-/*Function to create a hashtable with a inputted capacity
-*/
-Hashtable* hashtableCreate(int size) {
-
-	Hashtable* output=(Hashtable*)malloc(sizeof(Hashtable));
-
-	if(output==NULL) {
-		fprintf(stderr, "Error allocating memory to hashtable. Exiting...\n");
-		exit(-1);
-	}
-
-	//Initial capacity is inputted size
-	output->capacity=size;
-
-	//Load factor is 1
-	output->loadFactor=1.0;
-
-	//Intial number of elements is 0
-	output->numElements=0;
-
-
-	//Allocate memory for an array of node pointers
-	Node** nodeArray=(Node**)malloc(sizeof(Node*)*size);
-
-	if (nodeArray==NULL)
-	{
-		fprintf(stderr, "Error allocating memory to array of Node pointers. Exiting...\n");
-		exit(-1);
-	}
-
-	//Loop to intialize the hashtable array to empty Nodes
-	int i=0;
-	for(i;i<size;i++) {
-		nodeArray[i]=NULL;
-	}
-
-	output->nodeArray=nodeArray;
-
-	return output;
-
-}
-
-/*
-	Function to rebalance the hashtable
-*/
-
-void rebalance(Hashtable* table) {
-
-	//Pointer to temporary hash table
-	Hashtable* newTable=hashtableCreate(table->capacity*2);
-
-	int i=0;
-
-	for(i;i<table->capacity;i++) {
-		Node* ptr=table->nodeArray[i];
-		while(ptr!=NULL) {
-			Node* next=ptr->next;
-
-			int hashcode=hashCodeFd(newTable, ptr->fd);
-			ptr->next=newTable->nodeArray[hashcode];
-			newTable->nodeArray[hashcode]=ptr;
-			ptr=next;
-			newTable->numElements++;
-		}
-	}
-
-	free(table->nodeArray);
-
-	//Set the hashtable pointed to by the inputted pointer to be the new table
-	*table=*newTable;
-
-
-	//Free pointer to temporary table
-	free(newTable);
-}
-
-//Search for an inode with a path
-/*inode* searchPath(Hashtable* table, char* path) {
-	int hashcode=hashCodePath(table,path);
-	Node** nodeArray=table->nodeArray;
-	Node* ptr=nodeArray[hashcode];
-	while(ptr!=NULL) {
-		if(ptr->inode==NULL) {
-			return NULL;
-		}
-		if(strcmp(path,ptr->inode->path)==0) {
-			return ptr->inode;
-		}
-		ptr=ptr->next;
-	}
-
-	return NULL;
-}*/
-
-
-/*Function to insert a inode into the hashtable
-*/
-/*void insertPathTable(Hashtable* table, inode* node) {
-
-	//Check to see if the inode already exists in the hashtable
-	inode* exisitinginode=searchPath(table,node->path);
-	if(exisitinginode!=NULL){
-
-		fprintf(stderr, "inode already exists in table\n");
-		return;
-	}
-
-	//Else generate a hashcode
-	int hashcode=hashCodePath(table, node->path);
-
-	//Allocate dynamic memory and initalize a new Node
-	Node* newNode=(Node*)malloc(sizeof(Node));
-	newNode->inode=node;
-	newNode->next=table->nodeArray[hashcode];
-
-	//Insert the new node to the front of the list
-	table->nodeArray[hashcode]=newNode;
-
-	//Update the number of elements in the hashtable
-	table->numElements++;
-
-	//If the ratio of elements to capacity of the hashtable is to great, rebalance
-	if((double)(table->numElements)/(double)(table->capacity)>table->loadFactor) {
-		rebalance(table);
-	}
-}*/
-
-
-
-
-
-
-
-
 void *sfs_init(struct fuse_conn_info *conn)
 {	
 	struct sfs_state* state = SFS_DATA;
@@ -452,7 +196,7 @@ void sfs_destroy(void *userdata)
 int sfs_getattr(const char *path, struct stat *statbuf)
 {
     int retstat = 0;
-    char fpath[PATH_MAX];
+    //char fpath[PATH_MAX];
     
     log_msg("\nsfs_getattr(path=\"%s\", statbuf=0x%08x)\n",
 	  path, statbuf);
@@ -465,17 +209,98 @@ int sfs_getattr(const char *path, struct stat *statbuf)
     	statbuf->st_mode=root->permissions;
     	statbuf->st_size=root->size;
     	statbuf->st_mtime=root->timeStamp;
+
+    	return retstat;
     }
 
+    else {
+    	//Get the disk path
+    	char* disk=SFS_DATA->diskfile;
 
-    //find the inode based off of the path and update statbuf
+    	//open the disk
+    	disk_open(disk);
 
+    	//buffer to read into
+    	char buffer[512];
 
+    	//Read in the root node
+    	block_read(0,buffer);
+    	inode* rootDir=(inode*)buffer;
 
+    	//Search through all the direct map ptrs
+    	int i=1;
+    	for(i;i<100;i++) {
 
+    		//block num referenced by ptr
+    		int blocknum=rootDir->directMappedPtrs[i];
 
-    
-    return retstat;
+    		//if valid ptr
+    		if(blocknum>0) {
+
+    			//read in inode
+    			char buffer2[512];
+    			block_read(blocknum,buffer2);
+    			inode* tempNode=(inode*)buffer2;
+
+    			//Compares paths for match
+    			if(strcmp(tempNode->path,path+1)==0) {
+    				statbuf->st_uid = tempNode->userId;
+			    	statbuf->st_gid = tempNode->groupId;
+			    	statbuf->st_nlink = 1;
+			    	statbuf->st_mode=tempNode->permissions;
+			    	statbuf->st_size=tempNode->size;
+			    	statbuf->st_mtime=tempNode->timeStamp;
+			    	disk_close();
+			    	return retstat;
+    			}
+    		}
+    	}
+
+    	//Get block referred to by single indirection ptrs
+    	int pNodeBlock=rootDir->singleIndirectionPtrs[0];
+
+    	//if not in ue return
+    	if(pNodeBlock<=0) {
+    		disk_close();
+    		return 1;
+    	}
+
+    	//read in pnode
+    	block_read(pNodeBlock,buffer);
+    	pnode* pNode=(pnode*)buffer;
+
+    	//For each inode referenced by pnode
+    	i=0;
+    	for(i;i<128;i++) {
+
+    		//get the block of the inode
+    		int iNodeBlock=pNode->ptrs[i];
+
+    		//if valid ptr
+    		if(iNodeBlock>0) {
+
+    			//read in the inode
+    			char buffer2[512];
+    			block_read(iNodeBlock,buffer2);
+    			inode* tempNode=(inode*)buffer2;
+
+    			//Check for path match
+    			if(strcmp(tempNode->path,path+1)==0) {
+    				statbuf->st_uid = tempNode->userId;
+			    	statbuf->st_gid = tempNode->groupId;
+			    	statbuf->st_nlink = 1;
+			    	statbuf->st_mode=tempNode->permissions;
+			    	statbuf->st_size=tempNode->size;
+			    	statbuf->st_mtime=tempNode->timeStamp;
+			    	disk_close();
+			    	return retstat;
+    			}
+    		}
+    	}
+    }
+
+    disk_close();
+    return 1;
 }
 
 /**
