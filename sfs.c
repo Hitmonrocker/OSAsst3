@@ -80,10 +80,12 @@ typedef struct _inode {
 	gid_t groupId;
 
 	//file name
-	char path[64];
+	char path[48];
 
 	//last modified timestamp
-	time_t timeStamp;
+	time_t timeStampM;
+	time_t timeStampA;
+	time_t timeStampC;
 
 	int permissions;
 
@@ -115,7 +117,9 @@ void *sfs_init(struct fuse_conn_info *conn)
 	root->userId=getuid();
 	root->groupId=getegid();
 	root->permissions=S_IFDIR | S_IRWXU;
-	root->timeStamp=time(NULL);
+	root->timeStampM=time(NULL);
+	root->timeStampC=time(NULL);
+	root->timeStampA=time(NULL);
 	root->singleIndirectionPtrs[0]=-1;
 	root->doubleIndirectionPtrs[0]=-1;
 	memcpy(root->path,"/",1);
@@ -142,9 +146,11 @@ void *sfs_init(struct fuse_conn_info *conn)
 		newInode.blockNumber=i;
 		newInode.size=-1;
 		newInode.userId=getuid();
-		newInode.groupId=-getegid();
+		newInode.groupId=getegid();
 		newInode.permissions=-1;
-		newInode.timeStamp=time(NULL);
+		newInode.timeStampM=time(NULL);
+		newInode.timeStampA=time(NULL);
+		newInode.timeStampC=time(NULL);
 		newInode.singleIndirectionPtrs[0]=-1;
 		newInode.doubleIndirectionPtrs[0]=-1;
 		int j=0;
@@ -170,7 +176,6 @@ void *sfs_init(struct fuse_conn_info *conn)
     log_conn(conn);
     log_fuse_context(fuse_get_context());
 
-    disk_close();
 
     return state;
 }
@@ -208,7 +213,10 @@ int sfs_getattr(const char *path, struct stat *statbuf)
     	statbuf->st_nlink = 1;
     	statbuf->st_mode=root->permissions;
     	statbuf->st_size=root->size;
-    	statbuf->st_mtime=root->timeStamp;
+    	statbuf->st_mtime=root->timeStampM;
+    	statbuf->st_atime=root->timeStampA;
+    	statbuf->st_ctime=root->timeStampC;
+    	statbuf->st_blocks=((root->size-1)+512)/512;
 
     	return retstat;
     }
@@ -216,9 +224,6 @@ int sfs_getattr(const char *path, struct stat *statbuf)
     else {
     	//Get the disk path
     	char* disk=SFS_DATA->diskfile;
-
-    	//open the disk
-    	disk_open(disk);
 
     	//buffer to read into
     	char buffer[512];
@@ -249,8 +254,10 @@ int sfs_getattr(const char *path, struct stat *statbuf)
 			    	statbuf->st_nlink = 1;
 			    	statbuf->st_mode=tempNode->permissions;
 			    	statbuf->st_size=tempNode->size;
-			    	statbuf->st_mtime=tempNode->timeStamp;
-			    	disk_close();
+			    	statbuf->st_mtime=tempNode->timeStampM;
+			    	statbuf->st_atime=tempNode->timeStampA;
+			    	statbuf->st_ctime=tempNode->timeStampC;
+			    	statbuf->st_blocks=((tempNode->size-1)+512)/512;
 			    	return retstat;
     			}
     		}
@@ -259,10 +266,16 @@ int sfs_getattr(const char *path, struct stat *statbuf)
     	//Get block referred to by single indirection ptrs
     	int pNodeBlock=rootDir->singleIndirectionPtrs[0];
 
-    	//if not in ue return
+
+    	//if not in use return
     	if(pNodeBlock<=0) {
-    		disk_close();
-    		return 1;
+    		/*statbuf->st_uid = getuid();
+			statbuf->st_gid = getegid();
+			statbuf->st_nlink = 1;
+			statbuf->st_mode=S_IFREG | S_IRWXU;;
+			statbuf->st_size=0;
+			statbuf->st_mtime=time(NULL);*/
+    		return -1;
     	}
 
     	//read in pnode
@@ -291,16 +304,23 @@ int sfs_getattr(const char *path, struct stat *statbuf)
 			    	statbuf->st_nlink = 1;
 			    	statbuf->st_mode=tempNode->permissions;
 			    	statbuf->st_size=tempNode->size;
-			    	statbuf->st_mtime=tempNode->timeStamp;
-			    	disk_close();
+			    	statbuf->st_mtime=tempNode->timeStampM;
+			    	statbuf->st_ctime=tempNode->timeStampC;
+			    	statbuf->st_atime=tempNode->timeStampA;
+			    	statbuf->st_blocks=((tempNode->size-1)+512)/512;
 			    	return retstat;
     			}
     		}
+
     	}
     }
-
-    disk_close();
-    return 1;
+    /*statbuf->st_uid = getuid();
+	statbuf->st_gid = getegid();
+	statbuf->st_nlink = 1;
+	statbuf->st_mode=S_IFREG | S_IRWXU;;
+	statbuf->st_size=0;
+	statbuf->st_mtime=time(NULL);*/
+    return -1;
 }
 
 /**
@@ -322,6 +342,44 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 	    path, mode, fi);
 
 
+    char buffer[512];
+  	int i=1;
+    for(i;i<1000;i++) {
+    	block_read(i,buffer);
+
+    	inode* tempNode=(inode*)buffer;
+
+    	log_msg("\nmode: %d\n",tempNode->mode);
+
+    	if(tempNode->mode==2) {
+    		tempNode->mode=1;
+    		tempNode->size=0;
+    		tempNode->userId=getuid();
+    		tempNode->groupId=getegid();
+    		tempNode->permissions=mode;
+    		tempNode->timeStampM=time(NULL);
+    		tempNode->timeStampC=time(NULL);
+    		tempNode->timeStampA=time(NULL);
+    		tempNode->singleIndirectionPtrs[0]=-1;
+			tempNode->doubleIndirectionPtrs[0]=-1;
+
+			int j=0;
+			for(j;j<100;j++) {
+				tempNode->directMappedPtrs[j]=-1;;
+			}
+
+			memcpy(tempNode->path,path+1,strlen(path+1));
+
+			block_write(i,tempNode);
+
+			log_msg("\nnew file created\n");
+			break;
+    	}
+
+
+
+    }
+
     return retstat;
 }
 
@@ -337,7 +395,6 @@ int sfs_unlink(const char *path)
 		struct sfs_state* state = SFS_DATA;
 		char* file=state->diskfile;
 
-		disk_open(file);
 		block_read(0, myRoot);
 		//find the i-node associated with that filehandle
 		int i=1;
@@ -347,13 +404,15 @@ int sfs_unlink(const char *path)
 			block_read(i, cursor);
 			//if the paths match the i-node was found
 			//reset the i-node then write back to file
-			if(strcmp(cursor->path,path) == 0){
+			if(strcmp(cursor->path,path+1) == 0){
 				cursor->mode=2;
 				cursor->size=-1;
 				cursor->userId=getuid();
 				cursor->groupId=-getegid();
 				//cursor->path=NULL;
-				cursor->timeStamp=time(NULL);
+				cursor->timeStampM=time(NULL);
+				cursor->timeStampC=time(NULL);
+				cursor->timeStampA=time(NULL);
 				cursor->permissions=-1;
 				//TODO:update free array-->single and double indirection
 				cursor->singleIndirectionPtrs[0]=-1;
@@ -366,7 +425,6 @@ int sfs_unlink(const char *path)
 				block_write(i, cursor);
 			}
 		}
-		disk_close();
     return retstat;
 }
 
@@ -386,8 +444,22 @@ int sfs_open(const char *path, struct fuse_file_info *fi)
     log_msg("\nsfs_open(path\"%s\", fi=0x%08x)\n",
 	    path, fi);
 
+    char buffer[512];
+    int i=1;
+    for(i;i<1000;i++) {
+    	block_read(i,buffer);
 
-    return retstat;
+    	inode* tempNode=(inode*)buffer;
+
+    	if(tempNode->mode==1) {
+    		if(strcmp(path+1,tempNode->path)==0) {
+    			tempNode->timeStampM=time(NULL);
+    			tempNode->timeStampA=time(NULL);
+    			return retstat;
+    		}
+    	}
+    }
+    return 0;
 }
 
 /** Release an open file
