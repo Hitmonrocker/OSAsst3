@@ -258,6 +258,8 @@ int sfs_getattr(const char *path, struct stat *statbuf)
 			    	statbuf->st_atime=tempNode->timeStampA;
 			    	statbuf->st_ctime=tempNode->timeStampC;
 			    	statbuf->st_blocks=((tempNode->size-1)+512)/512;
+
+			    	log_msg("\nFOUND\n");
 			    	return retstat;
     			}
     		}
@@ -275,8 +277,9 @@ int sfs_getattr(const char *path, struct stat *statbuf)
 			statbuf->st_mode=S_IFREG | S_IRWXU;;
 			statbuf->st_size=0;
 			statbuf->st_mtime=time(NULL);*/
-    		int i = sfs_create(path, S_IRUSR |S_IWUSR, NULL);
-    		return ENOENT;
+    		//int i = sfs_create(path, S_IRUSR |S_IWUSR, NULL);
+    		log_msg("\ndidnt find\n");
+    		return -ENOENT;
     	}
 
     	//read in pnode
@@ -321,8 +324,8 @@ int sfs_getattr(const char *path, struct stat *statbuf)
 	statbuf->st_mode=S_IFREG | S_IRWXU;;
 	statbuf->st_size=0;
 	statbuf->st_mtime=time(NULL);*/
-	int i = sfs_create(path, S_IRUSR |S_IWUSR, NULL);
-    return ENOENT;
+	//int i = sfs_create(path, S_IRUSR |S_IWUSR, NULL);
+    return -ENOENT;
 }
 
 /**
@@ -343,21 +346,95 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     log_msg("\nsfs_create(path=\"%s\", mode=0%03o, fi=0x%08x)\n",
 	    path, mode, fi);
 
+    	//read in root inode
+
+    	char buffer0[512];
+
+		block_read(0,buffer0);
+
+		inode* root=(inode*)buffer0;
+
+		char directfound=0;
+
+		char indirectfound=0;
+
+		//search for a spot in the direct mapped ptrs
+		int j=0;
+		for(j;j<100;j++) {
+			if(root->directMappedPtrs[j]==-1) {
+				//root->directMappedPtrs[j]=i;
+				//freeArray[i]=1;
+				directfound=1;
+				break;
+			}
+		}
+
+		//if none found resort to single indirection
+		if(directfound==0) {
+
+			if(root->singleIndirectionPtrs[0]==-1) {
+				int t=1000;
+
+				for(t;t<numBlocks;t++) {
+					if(freeArray[t]==0) {
+						root->singleIndirectionPtrs[0]=t;
+						freeArray[t]=1;
+						indirectfound=1;	
+					}
+				}
+			}
+		}
+
+		//no more space in root
+		if(directfound==0&&indirectfound==0) {
+			return -1;
+		}
+
+			//update roots time stamps and size
+			root->timeStampM=time(NULL);
+    		root->timeStampC=time(NULL);
+    		root->timeStampA=time(NULL);
+    		root->size+=512;
+
 
     char buffer[512];
   	int i=1;
     for(i;i<1000;i++) {
+    	//read in the inodes
     	block_read(i,buffer);
 
     	inode* tempNode=(inode*)buffer;
 
-    	log_msg("\nmode: %d\n",tempNode->mode);
-
+    	//check if they are free
     	if(tempNode->mode==2) {
+
+    		//update pnode if pnode is being used
+    		if(directfound==0) {
+	    		char buffer2[512];
+	    		block_read(root->singleIndirectionPtrs[0],buffer2);
+
+	    		pnode* pNode=(pnode*)buffer2;
+	    		int k=0;
+	    		for(k;k<128;k++) {
+	    			if(pNode->ptrs[k]=-1) {
+	    				pNode->ptrs[k]=i;
+	    				block_write(root->singleIndirectionPtrs[0],pNode);
+	    				break;
+	    			}
+	    		}
+
+	    		//no more room
+	    		if(k>=128) {
+	    			return -1;
+	    		}
+	    	}
+
+
+	    	//create new inode
     		tempNode->mode=1;
     		tempNode->size=0;
-    		tempNode->userId=84267;
-    		tempNode->groupId=1234;//getegid();
+    		tempNode->userId=getuid();
+    		tempNode->groupId=getegid();
     		tempNode->permissions=mode;
     		tempNode->timeStampM=time(NULL);
     		tempNode->timeStampC=time(NULL);
@@ -365,16 +442,24 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     		tempNode->singleIndirectionPtrs[0]=-1;
 			tempNode->doubleIndirectionPtrs[0]=-1;
 
-			int j=0;
-			for(j;j<100;j++) {
-				tempNode->directMappedPtrs[j]=-1;;
+			int s=0;
+			for(s;s<100;s++) {
+				tempNode->directMappedPtrs[s]=-1;;
 			}
 
 			memcpy(tempNode->path,path+1,strlen(path+1));
 
-			block_write(i,tempNode);
+			//if directmaped ptr used update root
+			if(directfound==1) {
+				root->directMappedPtrs[j]=i;
+			}
 
-			log_msg("\nnew file created\n");
+			//write back the inode and root
+			block_write(i,tempNode);
+			block_write(0,root);
+
+			//mark the inode in the free array as free.
+			freeArray[i]=1;
 			break;
     	}
 
