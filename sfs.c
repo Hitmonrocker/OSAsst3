@@ -114,8 +114,8 @@ void *sfs_init(struct fuse_conn_info *conn)
 	root->mode=0;
 	root->blockNumber=0;
 	root->size=512;
-	root->userId=getuid();
-	root->groupId=getegid();
+	root->userId=84267;//getuid();
+	root->groupId=1234;//getegid();
 	root->permissions=S_IFDIR | S_IRWXU;
 	root->timeStampM=time(NULL);
 	root->timeStampC=time(NULL);
@@ -145,8 +145,8 @@ void *sfs_init(struct fuse_conn_info *conn)
 		newInode.mode=2;
 		newInode.blockNumber=i;
 		newInode.size=-1;
-		newInode.userId=getuid();
-		newInode.groupId=getegid();
+		newInode.userId=84267;//getuid();
+		newInode.groupId=1234;//getegid();
 		newInode.permissions=-1;
 		newInode.timeStampM=time(NULL);
 		newInode.timeStampA=time(NULL);
@@ -275,7 +275,8 @@ int sfs_getattr(const char *path, struct stat *statbuf)
 			statbuf->st_mode=S_IFREG | S_IRWXU;;
 			statbuf->st_size=0;
 			statbuf->st_mtime=time(NULL);*/
-    		return -1;
+    		int i = sfs_create(path, S_IRUSR |S_IWUSR, NULL);
+    		return ENOENT;
     	}
 
     	//read in pnode
@@ -320,7 +321,8 @@ int sfs_getattr(const char *path, struct stat *statbuf)
 	statbuf->st_mode=S_IFREG | S_IRWXU;;
 	statbuf->st_size=0;
 	statbuf->st_mtime=time(NULL);*/
-    return -1;
+	int i = sfs_create(path, S_IRUSR |S_IWUSR, NULL);
+    return ENOENT;
 }
 
 /**
@@ -354,8 +356,8 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     	if(tempNode->mode==2) {
     		tempNode->mode=1;
     		tempNode->size=0;
-    		tempNode->userId=getuid();
-    		tempNode->groupId=getegid();
+    		tempNode->userId=84267;
+    		tempNode->groupId=1234;//getegid();
     		tempNode->permissions=mode;
     		tempNode->timeStampM=time(NULL);
     		tempNode->timeStampC=time(NULL);
@@ -408,7 +410,7 @@ int sfs_unlink(const char *path)
 				cursor->mode=2;
 				cursor->size=-1;
 				cursor->userId=getuid();
-				cursor->groupId=-getegid();
+				cursor->groupId=getegid();
 				//cursor->path=NULL;
 				cursor->timeStampM=time(NULL);
 				cursor->timeStampC=time(NULL);
@@ -592,10 +594,39 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 	       struct fuse_file_info *fi)
 {
 	 log_msg("\nreaddir\n");
-    int retstat = 0;
+    //int retstat = 0;
+int retstat = 0;
+    DIR *dp;
+    struct dirent *de;
+    
+    log_msg("bb_readdir(path=\"%s\", buf=0x%08x, filler=0x%08x, offset=%lld, fi=0x%08x)\n",
+            path, (int) buf, (int) filler,  offset, (int) fi);
+    
+    dp = (DIR *) (uintptr_t) fi->fh;
 
+    // Every directory contains at least two entries: . and ..  If my
+    // first call to the system readdir() returns NULL I've got an
+    // error; near as I can tell, that's the only condition under
+    // which I can get an error from readdir()
+    de = readdir(dp);
+    if (de == 0)
+   	 return -errno;
+    //
+    // This will copy the entire directory into the buffer.  The loop exits
+    // when either the system readdir() returns NULL, or filler()
+    // returns something non-zero.  The first case just means I've
+    // read the whole directory; the second means the buffer is full.
+    do {
+                                                             log_msg("calling filler with name %s\n", de->d_name);
+                                                                     if (filler(buf, de->d_name, NULL, 0) != 0)
+                                                                                 return -ENOMEM;
+                                                                                     } while ((de = readdir(dp)) != NULL);
+                                                                                         
+                                                                                             log_fi(fi);
+                                                                                                 
+                                                                                                    return retstat;
 
-    return retstat;
+    //return retstat;
 }
 
 /** Release directory
