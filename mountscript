@@ -1,0 +1,5 @@
+make clean;
+./configure;
+make clean;
+make;
+./src/sfs /tmp/nt284/testfsfile /tmp/nt284/mountdir;

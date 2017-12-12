@@ -1,0 +1,5 @@
+fusermount -u /tmp/nt284/mountdir;
+rm -r /tmp/nt284/mountdir;
+rm /tmp/nt284/testfsfile;
+mkdir /tmp/nt284/mountdir;
+touch /tmp/nt284/testfsfile;
