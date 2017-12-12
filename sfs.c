@@ -521,6 +521,19 @@ int sfs_unlink(const char *path)
 				cursor->timeStampC=time(NULL);
 				cursor->timeStampA=time(NULL);
 				cursor->permissions=-1;
+
+				//free direct mapped pointers
+				for(j=0;j<100;j++) {
+					freeArray[cursor->directMappedPtrs[j]]=0;
+					cursor->directMappedPtrs[j]=-1;
+				}
+
+				//free single indirection pointers
+				block_read(cursor->singleIndirectionPtrs[0], level1);
+				for(x=0; x < 128; i++){
+					freeArray[level1->ptrs[x]]=0;
+				}
+
 				//free the double indirection pointers
 				block_read(cursor->doubleIndirectionPtrs[0], level1);
 				for(x=0; x < 128; i++){
@@ -528,13 +541,17 @@ int sfs_unlink(const char *path)
 					for(y=0; y < 128; y++){
 						freeArray[level2->ptrs[y]]=0;
 					}
+					freeArray[level1->ptrs[x]]=0;
 				}
+
+				//free the single and double indirection ptrs that are actually in iNode
+				freeArray[cursor->doubleIndirectionPtrs[0]]=0;
+				freeArray[cursor->singleIndirectionPtrs[0]]=0;
+
+				//reset single/doubleIndirection ptrs
 				cursor->singleIndirectionPtrs[0]=-1;
 				cursor->doubleIndirectionPtrs[0]=-1;
-				for(j;j<100;j++) {
-					freeArray[cursor->directMappedPtrs[j]]=0;
-					cursor->directMappedPtrs[j]=-1;
-				}
+
 				//write the updated cursor back to disk
 				block_write(i, cursor);
 			}
@@ -1105,7 +1122,7 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 {
         log_msg("\nreaddir\n");
         int retstat = 0;
-    
+
     	log_msg("\nsfs_readdir(path=\"%s\", buf=0x%08x, filler=0x%08x, offset=%lld, fi=0x%08x)\n",path,  buf, filler,  offset, fi);
 
 	if (strcmp(path, "/") != 0){
@@ -1119,7 +1136,7 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 	//log_msg( "passed . : return value:\"%d\"",k);
 	k = filler(buf, "..", NULL, 0);
 	//log_msg( "passed .. : return value:%d",k);
-	
+
 	/*if(k == 1){
 		fprintf
 		log_msg("\nerror returned: ENOMEM. When inserting file with path:\"%s\"\n",".");
@@ -1129,12 +1146,12 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 		log_msg("\nerror returned: ENOMEM. When inserting file with path:\"%s\"\n","..");
         	return -ENOMEM;
 	}*/
-    
 
-    // Every directory contains at least two entries: . and .. 
+
+    // Every directory contains at least two entries: . and ..
     //
     // This will copy the entire directory into the buffer.  The loop exits
-    // when filler() returns something non-zero.  
+    // when filler() returns something non-zero.
     // which means the buffer is full.
 
 	//Get the disk path
