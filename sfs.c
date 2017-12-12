@@ -596,6 +596,7 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
 	    path, buf, size, offset, fi);
 
     int u=1;
+    int amountRead=0;
     for(u;u<1000;u++) {
         char buffer[512];
         block_read(u,buffer);
@@ -610,8 +611,6 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
             int lastBlock=firstBlock+numBlocksToRead;
 
             int i=firstBlock;
-
-            int amountRead=0;
 
             for(i;i<=lastBlock;i++) {
                 //direct
@@ -731,12 +730,10 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
 
             }
         }
-
-        return size;
     }
 
 
-    return retstat;
+    return amountRead;
 }
 
 /** Write data to an open file
