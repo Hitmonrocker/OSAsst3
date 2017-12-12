@@ -385,9 +385,24 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 						root->singleIndirectionPtrs[0]=t;
 						freeArray[t]=1;
 						indirectfound=1;
+
+						char buf[512];
+						block_read(t,buf);
+
+						pnode* pNode=(pnode*)buf;
+
+						int g=0;
+						for(g;g<128;g++) {
+							pNode->ptrs[g]=-1;
+						}
+
+						block_write(t,pNode);
+
 						break;
 					}
 				}
+			} else {
+				indirectfound=1;
 			}
 		}
 
@@ -422,7 +437,7 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 	    		pnode* pNode=(pnode*)buffer2;
 	    		int k=0;
 	    		for(k;k<128;k++) {
-	    			if(pNode->ptrs[k]=-1) {
+	    			if(pNode->ptrs[k]==-1) {
 	    				pNode->ptrs[k]=i;
 	    				block_write(root->singleIndirectionPtrs[0],pNode);
 	    				break;
