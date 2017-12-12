@@ -480,7 +480,11 @@ int sfs_unlink(const char *path)
 {
 	int i=1;
 	int j=0;
+	int x=0;
+	int y=0;
 	inode* cursor=(inode*)malloc(sizeof(inode));
+	inode* level1=(inode*)malloc(sizeof(inode));
+	inode* level2=(inode*)malloc(sizeof(inode));
     int retstat = 0;
     log_msg("sfs_unlink(path=\"%s\")\n", path);
 
@@ -501,7 +505,14 @@ int sfs_unlink(const char *path)
 				cursor->timeStampC=time(NULL);
 				cursor->timeStampA=time(NULL);
 				cursor->permissions=-1;
-				//TODO:update free array-->single and double indirection
+				//free the double indirection pointers
+				read(cursor->doubleIndirectionPtrs[0], level1);
+				for(x=0; x < 128; i++){
+					read(level1[x], level2);
+					for(y=0; y < 128; y++){
+						freeArray[level2[y]]=0;
+					}
+				}
 				cursor->singleIndirectionPtrs[0]=-1;
 				cursor->doubleIndirectionPtrs[0]=-1;
 				for(j;j<100;j++) {
