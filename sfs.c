@@ -552,13 +552,16 @@ int sfs_unlink(const char *path)
 
 		    	log_msg("\ntest5.4\n");
 		    	if(found==0) {
+		    		log_msg("\npassed 5.4\n");
 		    		int pNodeBlock=rootDir->singleIndirectionPtrs[0];
 
 			    	if(pNodeBlock>0) {
+			    		log_msg("\npnode block valid\n");
 				    	int c=0;
 				    	//read in pnode
-				    	block_read(pNodeBlock,buffer);
-				    	pnode* pNode=(pnode*)buffer;
+				    	char buf[512];
+				    	block_read(pNodeBlock,buf);
+				    	pnode* pNode=(pnode*)buf;
 				    	for(c;c<128;c++) {
 
 				    		//get the block of the inode
@@ -567,6 +570,8 @@ int sfs_unlink(const char *path)
 				    		//if valid ptr
 				    		if(iNodeBlock>0) {
 
+				    			log_msg("\ninode block valid\n");
+
 				    			//read in the inode
 				    			char buffer2[512];
 				    			block_read(iNodeBlock,buffer2);
@@ -574,6 +579,7 @@ int sfs_unlink(const char *path)
 
 				    			//Check for path match
 				    			if(strcmp(tempNode->path,path+1)==0) {
+				    				log_msg("\nwrite pnode\n");
 				    				pNode->ptrs[c]==-1;
 				    				block_write(pNodeBlock,pNode);
 				    				break;
