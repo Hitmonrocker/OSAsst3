@@ -190,6 +190,7 @@ void *sfs_init(struct fuse_conn_info *conn)
 void sfs_destroy(void *userdata)
 {
     log_msg("\nsfs_destroy(userdata=0x%08x)\n", userdata);
+    disk_close();
 }
 
 /** Get file attributes.
@@ -473,8 +474,8 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 /** Remove a file */
 int sfs_unlink(const char *path)
 {
-		inode* myRoot=NULL;
-		inode* cursor=NULL;
+	inode* myRoot=NULL;
+	inode* cursor=NULL;
     int retstat = 0;
     log_msg("sfs_unlink(path=\"%s\")\n", path);
 
@@ -607,6 +608,267 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     int retstat = 0;
     log_msg("\nsfs_write(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi);
+
+    int i=1;
+
+    char buffer[512];
+    char buffer2[512];
+    for(i;i<1000;i++) {
+    	block_read(i,buffer);
+    	block_read(0,buffer2);
+
+    	inode* current=(inode*)buffer;
+    	inode* root=(inode*)root;
+
+    	if(current->mode=1&&strcmp(current->path,path+1)==0) {
+
+    		if(offset+size>current->size) {
+    			current->size+=offset+size-current->size;
+    			root->size+=offset+size-current->size;
+    		}
+
+
+    		int numBlocksToWrite=((offset%512+size)-1+512)/512;
+
+    		int firstBlock=offset/512;
+
+    		int lastBlock=firstBlock+numBlocksToWrite;
+
+    		int i=firstBlock;
+
+    		int amountWritten=0;
+
+    		for(i;i<=lastBlock;i++) {
+
+    			//direct
+    			if(i<100) {
+    				char buffer3[512];
+
+    				//initialize
+    				if(current->directMappedPtrs[i]==-1) {
+
+    					int j=1000;
+
+    					for(j;j<numBlocks;j++) {
+    						if(freeArray[j]==0) {
+    							current->directMappedPtrs[i]=j;
+    							freeArray[j]=1;
+    							break;
+    						}
+    					}
+
+    				}
+
+    				block_read(current->directMappedPtrs[i], buffer3);
+
+    				if(i==firstBlock) {
+    					int writeSize=512-offset%512;
+    					if(writeSize>size) {
+    						writeSize=size;
+    					}
+
+    					memcpy(buffer3+offset%512,buf + amountWritten,writeSize);
+    					amountWritten+=writeSize;
+    				}
+
+    				else {
+    					int writeSize=512;
+    					if(amountWritten+writeSize>size) {
+    						writeSize=size-amountWritten;
+    					}
+    					memcpy(buffer3,buf + amountWritten,writeSize);
+    					amountWritten+=writeSize;
+    				}
+
+    				block_write(current->directMappedPtrs[i],buffer3);
+    			}
+
+    			//single indirect
+    			else if (i<228) {
+
+    				int singleIndirectBlockNum=i-100;
+
+    				if(current->singleIndirectionPtrs[0]==-1) {
+    					int j=1000;
+
+    					for(j;j<numBlocks;j++) {
+    						if(freeArray[j]==0) {
+    							current->singleIndirectionPtrs[0]=j;
+    							freeArray[j]=1;
+    							break;
+    						}
+    					}
+
+    					pnode newPNode;
+
+    					int t=0;
+    					for(t;t<128;t++) {
+    						newPNode.ptrs[t]=-1;
+    					}
+
+    					block_write(j,&newPNode);
+    				}
+
+    				char buffer3[512];
+
+    				block_read(current->singleIndirectionPtrs[0],buffer3);
+
+    				pnode* pNode=(pnode*)buffer3;
+
+    				if(pNode->ptrs[singleIndirectBlockNum]==-1) {
+    					int j=1000;
+
+    					for(j;j<numBlocks;j++) {
+    						if(freeArray[j]==0) {
+    							pNode->ptrs[singleIndirectBlockNum]=j;
+    							freeArray[j]=1;
+    							break;
+    						}
+    					}
+
+    					block_write(current->singleIndirectionPtrs[0],pNode);
+    				}
+
+    				char buffer4[512];
+
+    				block_read(pNode->ptrs[singleIndirectBlockNum],buffer4);
+
+
+    				if(i==firstBlock) {
+    					int writeSize=512-offset%512;
+    					if(writeSize>size) {
+    						writeSize=size;
+    					}
+
+    					memcpy(buffer4+offset%512,buf + amountWritten,writeSize);
+    					amountWritten+=writeSize;
+    				}
+
+    				else {
+    					int writeSize=512;
+    					if(amountWritten+writeSize>size) {
+    						writeSize=size-amountWritten;
+    					}
+    					memcpy(buffer4,buf + amountWritten,writeSize);
+    					amountWritten+=writeSize;
+    				}
+
+    				block_write(pNode->ptrs[singleIndirectBlockNum],buffer4);
+
+    			}
+
+    			//double indirect
+    			else {
+
+    				int doubleIndirectBlock=(i-228)/128;
+    				int positionInDoubleIndirectBlock=(i-228)%128;
+
+    				if(current->doubleIndirectionPtrs[0]==-1) {
+    					int j=1000;
+
+    					for(j;j<numBlocks;j++) {
+    						if(freeArray[j]==0) {
+    							current->doubleIndirectionPtrs[0]=j;
+    							freeArray[j]=1;
+    							break;
+    						}
+    					}
+
+    					pnode newPNode;
+
+    					int t=0;
+    					for(t;t<128;t++) {
+    						newPNode.ptrs[t]=-1;
+    					}
+
+    					block_write(j,&newPNode);
+    				}
+
+
+    				char buffer3[512];
+
+    				block_read(current->doubleIndirectionPtrs[0],buffer3);
+
+    				pnode* pNode=(pnode*)buffer3;
+
+    				if(pNode->ptrs[doubleIndirectBlock]==-1) {
+    					int j=1000;
+
+    					for(j;j<numBlocks;j++) {
+    						if(freeArray[j]==0) {
+    							pNode->ptrs[doubleIndirectBlock]=j;
+    							freeArray[j]=1;
+    							break;
+    						}
+    					}
+
+    					pnode newPNode;
+
+    					int t=0;
+    					for(t;t<128;t++) {
+    						newPNode.ptrs[t]=-1;
+    					}
+
+    					block_write(j,&newPNode);
+
+    				}
+
+    				char buffer4[512];
+
+    				block_read(pNode->ptrs[doubleIndirectBlock],buffer4);
+
+    				pnode* pNode2=(pnode*)buffer4;
+
+    				if(pNode2->ptrs[positionInDoubleIndirectBlock]==-1) {
+    					int j=1000;
+
+    					for(j;j<numBlocks;j++) {
+    						if(freeArray[j]==0) {
+    							pNode2->ptrs[positionInDoubleIndirectBlock]=j;
+    							freeArray[j]=1;
+    							break;
+    						}
+    					}
+
+    					block_write(pNode->ptrs[doubleIndirectBlock],pNode2);
+    				}
+
+    				char buffer5[512];
+
+    				block_read(pNode2->ptrs[positionInDoubleIndirectBlock],buffer5);
+
+    				if(i==firstBlock) {
+    					int writeSize=512-offset%512;
+    					if(writeSize>size) {
+    						writeSize=size;
+    					}
+
+    					memcpy(buffer5+offset%512,buf + amountWritten,writeSize);
+    					amountWritten+=writeSize;
+    				}
+
+    				else {
+    					int writeSize=512;
+    					if(amountWritten+writeSize>size) {
+    						writeSize=size-amountWritten;
+    					}
+    					memcpy(buffer5,buf + amountWritten,writeSize);
+    					amountWritten+=writeSize;
+    				}
+
+    				block_write(pNode2->ptrs[positionInDoubleIndirectBlock],buffer5);
+
+    			}
+    		}
+
+    		log_msg("\n finished writing\n");
+
+    		block_write(0,root);
+    		block_write(i,current);
+    		return size;
+
+    	}
+    }
 
 
     return retstat;
@@ -754,8 +1016,6 @@ void sfs_usage()
 
 int main(int argc, char *argv[])
 {
-	printf("i node size : %d\n", sizeof(inode) );
-	printf("p node size : %d\n", sizeof(pnode) );
     int fuse_stat;
     struct sfs_state *sfs_data;
 
