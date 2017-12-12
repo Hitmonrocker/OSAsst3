@@ -510,7 +510,82 @@ int sfs_unlink(const char *path)
 			block_read(i, cursor);
 			//if the paths match the i-node was found
 			//reset the i-node then write back to file
-			if(strcmp(cursor->path,path+1) == 0){
+			if(cursor->mode==1&&strcmp(cursor->path,path+1) == 0){
+
+				char buffer[512];
+
+				block_read(0,buffer);
+
+				inode* rootDir=(inode*)buffer;
+
+				//Search through all the direct map ptrs
+		    	int h=1;
+		    	int found=0;
+
+
+
+		    	log_msg("\ntest5.1 \n");
+
+		    	for(h;h<100;h++) {
+
+		    		//block num referenced by ptr
+		    		int blocknum=rootDir->directMappedPtrs[h];
+
+		    		//if valid ptr
+		    		if(blocknum>0) {
+		    			log_msg("\ntest5.2\n");
+
+		    			//read in inode
+		    			char buffer2[512];
+		    			block_read(blocknum,buffer2);
+		    			inode* tempNode=(inode*)buffer2;
+
+		    			//Compares paths for match
+		    			log_msg("\n temp path: %s, path + 1 : %s\n",tempNode->path,path+1);
+		    			if(strcmp(tempNode->path,path+1)==0) {
+		    				log_msg("\ntest5.3\n");
+		    				rootDir->directMappedPtrs[h]=-1;
+		    				found=1;
+		    			}
+		    		}
+		    	}
+
+		    	log_msg("\ntest5.4\n");
+		    	if(found==0) {
+		    		int pNodeBlock=rootDir->singleIndirectionPtrs[0];
+
+			    	if(pNodeBlock>0) {
+				    	int c=0;
+				    	//read in pnode
+				    	block_read(pNodeBlock,buffer);
+				    	pnode* pNode=(pnode*)buffer;
+				    	for(c;c<128;c++) {
+
+				    		//get the block of the inode
+				    		int iNodeBlock=pNode->ptrs[c];
+
+				    		//if valid ptr
+				    		if(iNodeBlock>0) {
+
+				    			//read in the inode
+				    			char buffer2[512];
+				    			block_read(iNodeBlock,buffer2);
+				    			inode* tempNode=(inode*)buffer2;
+
+				    			//Check for path match
+				    			if(strcmp(tempNode->path,path+1)==0) {
+				    				pNode->ptrs[c]==-1;
+				    				block_write(pNodeBlock,pNode);
+				    				break;
+				    			}
+				    		}
+				    	}
+			    	}
+		    	}
+		    	log_msg("\ntest5.5\n");
+
+		    	block_write(0,rootDir);
+
 				log_msg("sfs_unlink(path=\"%s\")\n", path);
 				cursor->mode=2;
 				cursor->size=-1;
@@ -528,34 +603,68 @@ int sfs_unlink(const char *path)
 					cursor->directMappedPtrs[j]=-1;
 				}
 
+				log_msg("\ntest1\n");
+
 				//free single indirection pointers
-				block_read(cursor->singleIndirectionPtrs[0], level1);
-				for(x=0; x < 128; i++){
-					freeArray[level1->ptrs[x]]=0;
-				}
-
-				//free the double indirection pointers
-				block_read(cursor->doubleIndirectionPtrs[0], level1);
-				for(x=0; x < 128; i++){
-					block_read(level1->ptrs[x], level2);
-					for(y=0; y < 128; y++){
-						freeArray[level2->ptrs[y]]=0;
+				if(cursor->singleIndirectionPtrs[0]>0) {
+					block_read(cursor->singleIndirectionPtrs[0], level1);
+					for(x=0; x < 128; x++){
+						freeArray[level1->ptrs[x]]=0;
 					}
-					freeArray[level1->ptrs[x]]=0;
+
+
+					freeArray[cursor->singleIndirectionPtrs[0]]=0;
 				}
 
-				//free the single and double indirection ptrs that are actually in iNode
-				freeArray[cursor->doubleIndirectionPtrs[0]]=0;
-				freeArray[cursor->singleIndirectionPtrs[0]]=0;
+				log_msg("\ntest2\n");
+
+				if(cursor->doubleIndirectionPtrs[0]>0) {
+					//free the double indirection pointers
+					block_read(cursor->doubleIndirectionPtrs[0], level1);
+					log_msg("\ntest2.5\n");
+					for(x=0; x < 128; x++){
+						if(level1->ptrs[x]==-1) {
+							continue;
+						}
+						log_msg("\ntest2.75\n");
+						block_read(level1->ptrs[x], level2);
+						log_msg("\ntest2.8\n");
+						for(y=0; y < 128; y++){
+							if(level2->ptrs[y]==-1) {
+								continue;
+							}
+							freeArray[level2->ptrs[y]]=0;
+						}
+						freeArray[level1->ptrs[x]]=0;
+					}
+
+					freeArray[cursor->doubleIndirectionPtrs[0]]=0;
+				}
+
+
+				log_msg("\ntest3\n");
+
+				log_msg("\ntest4\n");
 
 				//reset single/doubleIndirection ptrs
 				cursor->singleIndirectionPtrs[0]=-1;
 				cursor->doubleIndirectionPtrs[0]=-1;
 
+				log_msg("\ntest5\n");
+
 				//write the updated cursor back to disk
 				block_write(i, cursor);
+
+				break;
 			}
+
 		}
+
+
+	log_msg("\ntest6\n");
+	free(cursor);
+	free(level1);
+	free(level2);
     return retstat;
 }
 
