@@ -385,6 +385,7 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 						root->singleIndirectionPtrs[0]=t;
 						freeArray[t]=1;
 						indirectfound=1;
+						break;
 					}
 				}
 			}
