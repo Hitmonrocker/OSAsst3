@@ -1087,11 +1087,9 @@ int sfs_opendir(const char *path, struct fuse_file_info *fi)
 int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset,
 	       struct fuse_file_info *fi)
 {
-    log_msg("\nreaddir\n");
-    int retstat = 0;
-    //DIR *dp;
-    //struct dirent *de;
-    //fprintf(stderr, "entered readdir");
+        log_msg("\nreaddir\n");
+        int retstat = 0;
+    
     	log_msg("\nsfs_readdir(path=\"%s\", buf=0x%08x, filler=0x%08x, offset=%lld, fi=0x%08x)\n",path,  buf, filler,  offset, fi);
 
 	if (strcmp(path, "/") != 0){
@@ -1100,12 +1098,12 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 		return -ENOENT;
 	}
 	//log_msg("checked path");
-	//fprintf(stderr, "checked path");
+
 	int k = filler(buf, ".", NULL, 0);
 	//log_msg( "passed . : return value:\"%d\"",k);
 	k = filler(buf, "..", NULL, 0);
 	//log_msg( "passed .. : return value:%d",k);
-	//return 0;
+	
 	/*if(k == 1){
 		fprintf
 		log_msg("\nerror returned: ENOMEM. When inserting file with path:\"%s\"\n",".");
@@ -1115,20 +1113,13 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 		log_msg("\nerror returned: ENOMEM. When inserting file with path:\"%s\"\n","..");
         	return -ENOMEM;
 	}*/
-    //dp = (DIR *) (uintptr_t) fi->fh;
+    
 
-    // Every directory contains at least two entries: . and ..  If my
-    // first call to the system readdir() returns NULL I've got an
-    // error; near as I can tell, that's the only condition under
-    // which I can get an error from readdir()
-    //de = readdir(dp);
-    //if (de == 0)
-   	 //return -errno;
+    // Every directory contains at least two entries: . and .. 
     //
     // This will copy the entire directory into the buffer.  The loop exits
-    // when either the system readdir() returns NULL, or filler()
-    // returns something non-zero.  The first case just means I've
-    // read the whole directory; the second means the buffer is full.
+    // when filler() returns something non-zero.  
+    // which means the buffer is full.
 
 	//Get the disk path
     	char* disk=SFS_DATA->diskfile;
@@ -1196,7 +1187,7 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
     			inode* tempNode=(inode*)buffer2;
 
     			//Check for path match
-    			if(strcmp(tempNode->path,'\0')!=0) {
+    			if(strlen(tempNode->path) > 0 && tempNode->path != '\0') {
     				if (filler(buf, tempNode->path, NULL, 0) != 0){
 					//log_msg("\nerror returned: ENOMEM. When inserting file with path:\"%s\"\n",tempNode->path);
         				return -ENOMEM;
@@ -1207,8 +1198,7 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 
     	}
 
-	return 0;
-    //return retstat;
+    return retstat;
 }
 
 /** Release directory
