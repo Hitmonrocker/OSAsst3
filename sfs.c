@@ -940,39 +940,127 @@ int sfs_opendir(const char *path, struct fuse_file_info *fi)
 int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset,
 	       struct fuse_file_info *fi)
 {
-	 log_msg("\nreaddir\n");
-    //int retstat = 0;
-int retstat = 0;
-    DIR *dp;
-    struct dirent *de;
-    
-    log_msg("bb_readdir(path=\"%s\", buf=0x%08x, filler=0x%08x, offset=%lld, fi=0x%08x)\n",
-            path, (int) buf, (int) filler,  offset, (int) fi);
-    
-    dp = (DIR *) (uintptr_t) fi->fh;
+    log_msg("\nreaddir\n");
+    int retstat = 0;
+    //DIR *dp;
+    //struct dirent *de;
+    fprintf(stderr, "entered readdir");
+    	log_msg("\nsfs_readdir(path=\"%s\", buf=0x%08x, filler=0x%08x, offset=%lld, fi=0x%08x)\n",path,  buf, filler,  offset, fi);
+    	
+	if (strcmp(path, "/") != 0){
+		fprintf(stderr, "returning ENOENT");
+		log_msg("returning ENOENT");
+		return -ENOENT;
+	}
+	log_msg("checked path");
+	fprintf(stderr, "checked path");
+	int k = filler(buf, ".", NULL, 0);
+	log_msg( "passed . : return value:\"%d\"",k);
+	k = filler(buf, "..", NULL, 0);
+	log_msg( "passed .. : return value:%d",k);
+	//return 0;
+	/*if(k == 1){
+		fprintf
+		log_msg("\nerror returned: ENOMEM. When inserting file with path:\"%s\"\n",".");
+        	return -ENOMEM;
+	}
+	if (filler(buf, "..", NULL, 0) == 1){
+		log_msg("\nerror returned: ENOMEM. When inserting file with path:\"%s\"\n","..");
+        	return -ENOMEM;
+	}*/
+    //dp = (DIR *) (uintptr_t) fi->fh;
 
     // Every directory contains at least two entries: . and ..  If my
     // first call to the system readdir() returns NULL I've got an
     // error; near as I can tell, that's the only condition under
     // which I can get an error from readdir()
-    de = readdir(dp);
-    if (de == 0)
-   	 return -errno;
+    //de = readdir(dp);
+    //if (de == 0)
+   	 //return -errno;
     //
     // This will copy the entire directory into the buffer.  The loop exits
     // when either the system readdir() returns NULL, or filler()
     // returns something non-zero.  The first case just means I've
     // read the whole directory; the second means the buffer is full.
-    do {
-                                                             log_msg("calling filler with name %s\n", de->d_name);
-                                                                     if (filler(buf, de->d_name, NULL, 0) != 0)
-                                                                                 return -ENOMEM;
-                                                                                     } while ((de = readdir(dp)) != NULL);
-                                                                                         
-                                                                                             log_fi(fi);
-                                                                                                 
-                                                                                                    return retstat;
 
+	//Get the disk path
+    	char* disk=SFS_DATA->diskfile;
+
+    	//buffer to read into
+    	char buffer[512];
+
+    	//Read in the root node
+    	block_read(0,buffer);
+    	inode* rootDir=(inode*)buffer;
+
+    	//Search through all the direct map ptrs
+    	int i=1;
+    	for(i;i<100;i++) {
+		log_msg("\nreaddir: inside first for loop\n");
+    		//block num referenced by ptr
+    		int blocknum=rootDir->directMappedPtrs[i];
+		log_msg("entered 1st for loop");
+    		//if valid ptr
+    		if(blocknum>0) {
+
+    			//read in inode
+    			char buffer2[512];
+    			block_read(blocknum,buffer2);
+    			inode* tempNode=(inode*)buffer2;
+			log_msg("\npath=\"%s\"\n",tempNode->path);
+    			//Compares paths for match
+    		
+    				if (filler(buf, tempNode->path, NULL, 0) != 0){
+					log_msg("\nerror returned: ENOMEM. When inserting file with path:\"%s\"\n",tempNode->path);
+        				return -ENOMEM;
+			
+			    	log_msg("\npath=\"%s\"\n",tempNode->path);
+    			}
+    		}
+    	}
+
+    	//Get block referred to by single indirection ptrs
+    	int pNodeBlock=rootDir->singleIndirectionPtrs[0];
+
+
+    	//if not in use return
+    	if(pNodeBlock<=0) {
+    		log_msg("\ndidnt find files in single indirection pointer\n");
+		
+    	}
+
+    	//read in pnode
+    	block_read(pNodeBlock,buffer);
+    	pnode* pNode=(pnode*)buffer;
+
+    	//For each inode referenced by pnode
+    	i=0;
+    	for(i;i<128;i++) {
+
+    		//get the block of the inode
+    		int iNodeBlock=pNode->ptrs[i];
+
+    		//if valid ptr
+    		if(iNodeBlock>0) {
+
+    			//read in the inode
+    			char buffer2[512];
+    			block_read(iNodeBlock,buffer2);
+    			inode* tempNode=(inode*)buffer2;
+
+    			//Check for path match
+    			if(strcmp(tempNode->path,'\0')!=0) {
+    				if (filler(buf, tempNode->path, NULL, 0) != 0){
+					log_msg("\nerror returned: ENOMEM. When inserting file with path:\"%s\"\n",tempNode->path);
+        				return -ENOMEM;
+				}
+			    	log_msg("\npath=\"%s\"\n",tempNode->path);
+    			}
+    		}
+
+    	}
+   
+	return 0;
     //return retstat;
 }
 
