@@ -384,7 +384,7 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 					if(freeArray[t]==0) {
 						root->singleIndirectionPtrs[0]=t;
 						freeArray[t]=1;
-						indirectfound=1;	
+						indirectfound=1;
 					}
 				}
 			}
@@ -478,30 +478,25 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 /** Remove a file */
 int sfs_unlink(const char *path)
 {
-	inode* myRoot=NULL;
-	inode* cursor=NULL;
+	int i=1;
+	int j=0;
+	inode* cursor=(inode*)malloc(sizeof(inode));
     int retstat = 0;
     log_msg("sfs_unlink(path=\"%s\")\n", path);
 
-		//find root i-node
-		struct sfs_state* state = SFS_DATA;
-		char* file=state->diskfile;
 
-		block_read(0, myRoot);
-		//find the i-node associated with that filehandle
-		int i=1;
-		int j=0;
 		for(i=1; i < 1000; i++){
 			//get i-node from memory
 			block_read(i, cursor);
 			//if the paths match the i-node was found
 			//reset the i-node then write back to file
 			if(strcmp(cursor->path,path+1) == 0){
+				log_msg("sfs_unlink(path=\"%s\")\n", path);
 				cursor->mode=2;
 				cursor->size=-1;
 				cursor->userId=getuid();
 				cursor->groupId=getegid();
-				//cursor->path=NULL;
+				memset(cursor->path, 0, 48);
 				cursor->timeStampM=time(NULL);
 				cursor->timeStampC=time(NULL);
 				cursor->timeStampA=time(NULL);
@@ -1087,7 +1082,7 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
     //struct dirent *de;
     //fprintf(stderr, "entered readdir");
     	log_msg("\nsfs_readdir(path=\"%s\", buf=0x%08x, filler=0x%08x, offset=%lld, fi=0x%08x)\n",path,  buf, filler,  offset, fi);
-    	
+
 	if (strcmp(path, "/") != 0){
 		//fprintf(stderr, "returning ENOENT");
 		//log_msg("returning ENOENT");
@@ -1150,11 +1145,11 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
     			inode* tempNode=(inode*)buffer2;
 			//log_msg("\npath=\"%s\"\n",tempNode->path);
     			//Compares paths for match
-    		
+
     				if (filler(buf, tempNode->path, NULL, 0) != 0){
 					//log_msg("\nerror returned: ENOMEM. When inserting file with path:\"%s\"\n",tempNode->path);
         				return -ENOMEM;
-			
+
 			    	//log_msg("\npath=\"%s\"\n",tempNode->path);
     			}
     		}
@@ -1167,7 +1162,7 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
     	//if not in use return
     	if(pNodeBlock<=0) {
     		//log_msg("\ndidnt find files in single indirection pointer\n");
-		
+
     	}
 
     	//read in pnode
@@ -1200,7 +1195,7 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
     		}
 
     	}
-   
+
 	return 0;
     //return retstat;
 }
