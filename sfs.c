@@ -98,8 +98,6 @@ typedef struct _inode {
 } inode;
 
 
-//root inode of the file system
-static inode* root;
 
 void *sfs_init(struct fuse_conn_info *conn)
 {
@@ -109,13 +107,13 @@ void *sfs_init(struct fuse_conn_info *conn)
 
 	//set up the root inode
 
-	root=malloc(sizeof(inode));
+	inode* root=malloc(sizeof(inode));
 
 	root->mode=0;
 	root->blockNumber=0;
-	root->size=512;
-	root->userId=84267;//getuid();
-	root->groupId=1234;//getegid();
+	root->size=0;
+	root->userId=getuid();
+	root->groupId=getegid();
 	root->permissions=S_IFDIR | S_IRWXU;
 	root->timeStampM=time(NULL);
 	root->timeStampC=time(NULL);
@@ -138,6 +136,8 @@ void *sfs_init(struct fuse_conn_info *conn)
 
 	block_write(0,(void*)root);
 
+    free(root);
+
 	//set up all inodes and write them to the disk
 	i=1;
 	for(i;i<1000;i++) {
@@ -145,8 +145,8 @@ void *sfs_init(struct fuse_conn_info *conn)
 		newInode.mode=2;
 		newInode.blockNumber=i;
 		newInode.size=-1;
-		newInode.userId=84267;//getuid();
-		newInode.groupId=1234;//getegid();
+		newInode.userId=getuid();
+		newInode.groupId=getegid();
 		newInode.permissions=-1;
 		newInode.timeStampM=time(NULL);
 		newInode.timeStampA=time(NULL);
@@ -207,6 +207,12 @@ int sfs_getattr(const char *path, struct stat *statbuf)
     log_msg("\nsfs_getattr(path=\"%s\", statbuf=0x%08x)\n",
 	  path, statbuf);
 
+    char buffer[512];
+
+    block_read(0,buffer);
+
+    inode* root=(inode*)buffer;
+
     //If the inode is the root directory
     if ((strlen(path)==1)&&path[0]=='/') {
     	statbuf->st_uid = root->userId;
@@ -259,8 +265,6 @@ int sfs_getattr(const char *path, struct stat *statbuf)
 			    	statbuf->st_atime=tempNode->timeStampA;
 			    	statbuf->st_ctime=tempNode->timeStampC;
 			    	statbuf->st_blocks=((tempNode->size-1)+512)/512;
-
-			    	log_msg("\nFOUND\n");
 			    	return retstat;
     			}
     		}
@@ -279,7 +283,7 @@ int sfs_getattr(const char *path, struct stat *statbuf)
 			statbuf->st_size=0;
 			statbuf->st_mtime=time(NULL);*/
     		//int i = sfs_create(path, S_IRUSR |S_IWUSR, NULL);
-    		log_msg("\ndidnt find\n");
+            log_msg("\nnot found\n");
     		return -ENOENT;
     	}
 
@@ -591,6 +595,147 @@ int sfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
     log_msg("\nsfs_read(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi);
 
+    int u=1;
+    for(u;u<1000;u++) {
+        char buffer[512];
+        block_read(u,buffer);
+
+        inode* current=(inode*)buffer;
+
+        if(current->mode==1&&strcmp(current->path,path+1)==0) {
+            int numBlocksToRead=((offset%512+size)-1+512)/512;
+
+            int firstBlock=offset/512;
+
+            int lastBlock=firstBlock+numBlocksToRead;
+
+            int i=firstBlock;
+
+            int amountRead=0;
+
+            for(i;i<=lastBlock;i++) {
+                //direct
+                if(i<100) {
+                    char buffer3[512];
+
+                    //initialize
+                    if(current->directMappedPtrs[i]==-1) {
+                        return amountRead;
+                    }
+
+                    block_read(current->directMappedPtrs[i], buffer3);
+
+                    if(i==firstBlock) {
+
+                        memcpy(buf+amountRead,buffer3+offset%512,512-offset%512);
+                        amountRead+=512-offset%512;
+                    } else if (i==lastBlock) {
+                        memcpy(buf+amountRead,buffer3,size-amountRead);
+                        amountRead+=size-amountRead;
+                    }
+                    else {
+                        memcpy(buf+amountRead,buffer3,512);
+                        amountRead+=512-offset%512;
+                     }
+                }
+
+                //single indirect
+                else if (i<228) {
+
+                    int singleIndirectBlockNum=i-100;
+
+                    if(current->singleIndirectionPtrs[0]==-1) {
+                        return amountRead;
+                    }
+
+                    char buffer3[512];
+
+                    block_read(current->singleIndirectionPtrs[0],buffer3);
+
+                    pnode* pNode=(pnode*)buffer3;
+
+                    if(pNode->ptrs[singleIndirectBlockNum]==-1) {
+                        return amountRead;
+                    }
+
+                    char buffer4[512];
+
+                    block_read(pNode->ptrs[singleIndirectBlockNum],buffer4);
+
+
+                    if(i==firstBlock) {
+
+                        memcpy(buf+amountRead,buffer4+offset%512,512-offset%512);
+                        amountRead+=512-offset%512;
+                    } else if (i==lastBlock) {
+                        memcpy(buf+amountRead,buffer4,size-amountRead);
+                        amountRead+=size-amountRead;
+                    }
+                    else {
+                        memcpy(buf+amountRead,buffer4,512);
+                        amountRead+=512-offset%512;
+                     }
+
+                }
+
+                //double indirect
+                else {
+
+                    int doubleIndirectBlock=(i-228)/128;
+                    int positionInDoubleIndirectBlock=(i-228)%128;
+
+                    if(current->doubleIndirectionPtrs[0]==-1) {
+                        return amountRead;
+                    }
+
+
+                    char buffer3[512];
+
+                    block_read(current->doubleIndirectionPtrs[0],buffer3);
+
+                    pnode* pNode=(pnode*)buffer3;
+
+                    if(pNode->ptrs[doubleIndirectBlock]==-1) {
+                        return amountRead;
+
+                    }
+
+                    char buffer4[512];
+
+                    block_read(pNode->ptrs[doubleIndirectBlock],buffer4);
+
+                    pnode* pNode2=(pnode*)buffer4;
+
+                    if(pNode2->ptrs[positionInDoubleIndirectBlock]==-1) {
+                        return amountRead;
+                    }
+
+                    char buffer5[512];
+
+                    block_read(pNode2->ptrs[positionInDoubleIndirectBlock],buffer5);
+
+                    if(i==firstBlock) {
+
+                        memcpy(buf+amountRead,buffer5+offset%512,512-offset%512);
+                        amountRead+=512-offset%512;
+                    } else if (i==lastBlock) {
+                        memcpy(buf+amountRead,buffer5,size-amountRead);
+                        amountRead+=size-amountRead;
+                    }
+                    else {
+                        memcpy(buf+amountRead,buffer5,512);
+                        amountRead+=512-offset%512;
+                     }
+
+                }
+
+            }
+        }
+
+        return size;
+    }
+
+
     return retstat;
 }
 
@@ -609,22 +754,22 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     log_msg("\nsfs_write(path=\"%s\", buf=0x%08x, size=%d, offset=%lld, fi=0x%08x)\n",
 	    path, buf, size, offset, fi);
 
-    int i=1;
+    int u=1;
 
     char buffer[512];
     char buffer2[512];
-    for(i;i<1000;i++) {
-    	block_read(i,buffer);
-    	block_read(0,buffer2);
+    block_read(0,buffer2);
+    inode* root=(inode*)buffer2;
+    for(u;u<1000;u++) {
+    	block_read(u,buffer);
 
     	inode* current=(inode*)buffer;
-    	inode* root=(inode*)root;
-
-    	if(current->mode=1&&strcmp(current->path,path+1)==0) {
+    	if(current->mode==1&&strcmp(current->path,path+1)==0) {
 
     		if(offset+size>current->size) {
-    			current->size+=offset+size-current->size;
-    			root->size+=offset+size-current->size;
+                root->size=root->size+offset+size-current->size;
+                log_msg("\n%d\n",root->size);
+    			current->size=offset+size;
     		}
 
 
@@ -644,6 +789,7 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     			if(i<100) {
     				char buffer3[512];
 
+
     				//initialize
     				if(current->directMappedPtrs[i]==-1) {
 
@@ -661,6 +807,7 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
 
     				block_read(current->directMappedPtrs[i], buffer3);
 
+
     				if(i==firstBlock) {
     					int writeSize=512-offset%512;
     					if(writeSize>size) {
@@ -670,7 +817,6 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     					memcpy(buffer3+offset%512,buf + amountWritten,writeSize);
     					amountWritten+=writeSize;
     				}
-
     				else {
     					int writeSize=512;
     					if(amountWritten+writeSize>size) {
@@ -859,13 +1005,11 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     				block_write(pNode2->ptrs[positionInDoubleIndirectBlock],buffer5);
 
     			}
+
+                block_write(u,current);
+                block_write(0,root);
+                return size;
     		}
-
-    		log_msg("\n finished writing\n");
-
-    		block_write(0,root);
-    		block_write(i,current);
-    		return size;
 
     	}
     }
@@ -944,20 +1088,20 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
     int retstat = 0;
     //DIR *dp;
     //struct dirent *de;
-    fprintf(stderr, "entered readdir");
+    //fprintf(stderr, "entered readdir");
     	log_msg("\nsfs_readdir(path=\"%s\", buf=0x%08x, filler=0x%08x, offset=%lld, fi=0x%08x)\n",path,  buf, filler,  offset, fi);
     	
 	if (strcmp(path, "/") != 0){
-		fprintf(stderr, "returning ENOENT");
-		log_msg("returning ENOENT");
+		//fprintf(stderr, "returning ENOENT");
+		//log_msg("returning ENOENT");
 		return -ENOENT;
 	}
-	log_msg("checked path");
-	fprintf(stderr, "checked path");
+	//log_msg("checked path");
+	//fprintf(stderr, "checked path");
 	int k = filler(buf, ".", NULL, 0);
-	log_msg( "passed . : return value:\"%d\"",k);
+	//log_msg( "passed . : return value:\"%d\"",k);
 	k = filler(buf, "..", NULL, 0);
-	log_msg( "passed .. : return value:%d",k);
+	//log_msg( "passed .. : return value:%d",k);
 	//return 0;
 	/*if(k == 1){
 		fprintf
@@ -996,10 +1140,10 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
     	//Search through all the direct map ptrs
     	int i=1;
     	for(i;i<100;i++) {
-		log_msg("\nreaddir: inside first for loop\n");
+		//log_msg("\nreaddir: inside first for loop\n");
     		//block num referenced by ptr
     		int blocknum=rootDir->directMappedPtrs[i];
-		log_msg("entered 1st for loop");
+		//log_msg("entered 1st for loop");
     		//if valid ptr
     		if(blocknum>0) {
 
@@ -1007,14 +1151,14 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
     			char buffer2[512];
     			block_read(blocknum,buffer2);
     			inode* tempNode=(inode*)buffer2;
-			log_msg("\npath=\"%s\"\n",tempNode->path);
+			//log_msg("\npath=\"%s\"\n",tempNode->path);
     			//Compares paths for match
     		
     				if (filler(buf, tempNode->path, NULL, 0) != 0){
-					log_msg("\nerror returned: ENOMEM. When inserting file with path:\"%s\"\n",tempNode->path);
+					//log_msg("\nerror returned: ENOMEM. When inserting file with path:\"%s\"\n",tempNode->path);
         				return -ENOMEM;
 			
-			    	log_msg("\npath=\"%s\"\n",tempNode->path);
+			    	//log_msg("\npath=\"%s\"\n",tempNode->path);
     			}
     		}
     	}
@@ -1025,7 +1169,7 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 
     	//if not in use return
     	if(pNodeBlock<=0) {
-    		log_msg("\ndidnt find files in single indirection pointer\n");
+    		//log_msg("\ndidnt find files in single indirection pointer\n");
 		
     	}
 
@@ -1051,7 +1195,7 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
     			//Check for path match
     			if(strcmp(tempNode->path,'\0')!=0) {
     				if (filler(buf, tempNode->path, NULL, 0) != 0){
-					log_msg("\nerror returned: ENOMEM. When inserting file with path:\"%s\"\n",tempNode->path);
+					//log_msg("\nerror returned: ENOMEM. When inserting file with path:\"%s\"\n",tempNode->path);
         				return -ENOMEM;
 				}
 			    	log_msg("\npath=\"%s\"\n",tempNode->path);
