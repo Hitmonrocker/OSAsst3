@@ -903,10 +903,16 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     char buffer2[512];
     block_read(0,buffer2);
     inode* root=(inode*)buffer2;
+    root->timeStampA=time(NULL);
+    root->timeStampM=time(NULL);
+    root->timeStampC=time(NULL);
     for(u;u<1000;u++) {
     	block_read(u,buffer);
 
     	inode* current=(inode*)buffer;
+    	current->timeStampA=time(NULL);
+    	current->timeStampM=time(NULL);
+    	current->timeStampC=time(NULL);
     	if(current->mode==1&&strcmp(current->path,path+1)==0) {
 
     		if(offset+size>current->size) {
