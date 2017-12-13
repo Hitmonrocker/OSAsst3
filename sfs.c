@@ -928,6 +928,8 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
 
     		for(i;i<=lastBlock;i++) {
 
+    			log_msg("\nOn block: %d\n",i);
+
     			//direct
     			if(i<100) {
     				char buffer3[512];
@@ -1150,9 +1152,11 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     			}
 
                 block_write(u,current);
-                block_write(0,root);
-                return size;
+                
     		}
+
+    		block_write(0,root);
+            return size;
 
     	}
     }
