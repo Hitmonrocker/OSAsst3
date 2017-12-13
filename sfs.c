@@ -1051,6 +1051,8 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     			//double indirect
     			else {
 
+    				log_msg("\nDobule Indirect\n");
+
     				int doubleIndirectBlock=(i-228)/128;
     				int positionInDoubleIndirectBlock=(i-228)%128;
 
@@ -1073,6 +1075,7 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     					}
 
     					block_write(j,&newPNode);
+    					block_write(u,current);
     				}
 
 
@@ -1101,6 +1104,7 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     					}
 
     					block_write(j,&newPNode);
+    					block_write(current->doubleIndirectionPtrs[0],pNode);
 
     				}
 
@@ -1146,6 +1150,8 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     					memcpy(buffer5,buf + amountWritten,writeSize);
     					amountWritten+=writeSize;
     				}
+
+    				log_msg("\n final pNode written \n");
 
     				block_write(pNode2->ptrs[positionInDoubleIndirectBlock],buffer5);
 
