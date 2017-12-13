@@ -408,6 +408,7 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 
 		//no more space in root
 		if(directfound==0&&indirectfound==0) {
+			log_msg("\n no direct ptrs found\n");
 			return -1;
 		}
 
@@ -446,6 +447,7 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 
 	    		//no more room
 	    		if(k>=128) {
+	    			log_msg("\n no indirect ptrs found : %d\n", root->singleIndirectionPtrs[0]);
 	    			return -1;
 	    		}
 	    	}
@@ -533,7 +535,7 @@ int sfs_unlink(const char *path)
 
 		    		//if valid ptr
 		    		if(blocknum>0) {
-		    			log_msg("\ntest5.2\n");
+		    			//log_msg("\ntest5.2\n");
 
 		    			//read in inode
 		    			char buffer2[512];
@@ -541,11 +543,12 @@ int sfs_unlink(const char *path)
 		    			inode* tempNode=(inode*)buffer2;
 
 		    			//Compares paths for match
-		    			log_msg("\n temp path: %s, path + 1 : %s\n",tempNode->path,path+1);
+		    			//log_msg("\n temp path: %s, path + 1 : %s\n",tempNode->path,path+1);
 		    			if(strcmp(tempNode->path,path+1)==0) {
 		    				log_msg("\ntest5.3\n");
 		    				rootDir->directMappedPtrs[h]=-1;
 		    				found=1;
+		    				break;
 		    			}
 		    		}
 		    	}
@@ -556,7 +559,6 @@ int sfs_unlink(const char *path)
 		    		int pNodeBlock=rootDir->singleIndirectionPtrs[0];
 
 			    	if(pNodeBlock>0) {
-			    		log_msg("\npnode block valid\n");
 				    	int c=0;
 				    	//read in pnode
 				    	char buf[512];
@@ -570,8 +572,6 @@ int sfs_unlink(const char *path)
 				    		//if valid ptr
 				    		if(iNodeBlock>0) {
 
-				    			log_msg("\ninode block valid\n");
-
 				    			//read in the inode
 				    			char buffer2[512];
 				    			block_read(iNodeBlock,buffer2);
@@ -579,9 +579,12 @@ int sfs_unlink(const char *path)
 
 				    			//Check for path match
 				    			if(strcmp(tempNode->path,path+1)==0) {
-				    				log_msg("\nwrite pnode\n");
-				    				pNode->ptrs[c]==-1;
-				    				block_write(pNodeBlock,pNode);
+				    				pNode->ptrs[c]=-1;
+				    				int writeAmount=block_write(pNodeBlock,pNode);
+				    				log_msg("\nwrite pnode block: %d : %d\n",pNodeBlock,c);
+				    				if(c!=0) {
+				    					log_msg("\nptr before status: %d\n",pNode->ptrs[c-1]);
+				    				}
 				    				break;
 				    			}
 				    		}
@@ -609,8 +612,6 @@ int sfs_unlink(const char *path)
 					cursor->directMappedPtrs[j]=-1;
 				}
 
-				log_msg("\ntest1\n");
-
 				//free single indirection pointers
 				if(cursor->singleIndirectionPtrs[0]>0) {
 					block_read(cursor->singleIndirectionPtrs[0], level1);
@@ -622,19 +623,15 @@ int sfs_unlink(const char *path)
 					freeArray[cursor->singleIndirectionPtrs[0]]=0;
 				}
 
-				log_msg("\ntest2\n");
 
 				if(cursor->doubleIndirectionPtrs[0]>0) {
 					//free the double indirection pointers
 					block_read(cursor->doubleIndirectionPtrs[0], level1);
-					log_msg("\ntest2.5\n");
 					for(x=0; x < 128; x++){
 						if(level1->ptrs[x]==-1) {
 							continue;
 						}
-						log_msg("\ntest2.75\n");
 						block_read(level1->ptrs[x], level2);
-						log_msg("\ntest2.8\n");
 						for(y=0; y < 128; y++){
 							if(level2->ptrs[y]==-1) {
 								continue;
@@ -648,15 +645,10 @@ int sfs_unlink(const char *path)
 				}
 
 
-				log_msg("\ntest3\n");
-
-				log_msg("\ntest4\n");
-
 				//reset single/doubleIndirection ptrs
 				cursor->singleIndirectionPtrs[0]=-1;
 				cursor->doubleIndirectionPtrs[0]=-1;
 
-				log_msg("\ntest5\n");
 
 				//write the updated cursor back to disk
 				block_write(i, cursor);
