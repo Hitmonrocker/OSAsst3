@@ -519,7 +519,7 @@ int sfs_unlink(const char *path)
 				inode* rootDir=(inode*)buffer;
 
 				//Search through all the direct map ptrs
-		    	int h=1;
+		    	int h=0;
 		    	int found=0;
 
 
@@ -660,8 +660,6 @@ int sfs_unlink(const char *path)
 
 				//write the updated cursor back to disk
 				block_write(i, cursor);
-
-				freeArray[i]=0;
 
 				break;
 			}
