@@ -593,6 +593,10 @@ int sfs_unlink(const char *path)
 		    	}
 		    	log_msg("\ntest5.5\n");
 
+		    	rootDir->timeStampA=time(NULL);
+		    	rootDir->timeStampM=time(NULL);
+		    	rootDir->timeStampC=time(NULL);
+
 		    	block_write(0,rootDir);
 
 				log_msg("sfs_unlink(path=\"%s\")\n", path);
