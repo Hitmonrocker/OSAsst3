@@ -661,6 +661,8 @@ int sfs_unlink(const char *path)
 				//write the updated cursor back to disk
 				block_write(i, cursor);
 
+				freeArray[i]=0;
+
 				break;
 			}
 
