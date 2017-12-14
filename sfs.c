@@ -1233,7 +1233,9 @@ int sfs_opendir(const char *path, struct fuse_file_info *fi)
 			if(root->directMappedPtrs[i] > 0){
 				if(strcmp(path+1,root->path)==0 && root->mode==0) {
 					found=1;
-					//TODO:update time stamps
+					root->timeStampM=time(NULL);
+    			root->timeStampA=time(NULL);
+					block_write(0, root);
 				}
 			}
 		}
@@ -1241,12 +1243,14 @@ int sfs_opendir(const char *path, struct fuse_file_info *fi)
 		//search through all of the indirect poitners
 		if(root->singleIndirectionPtrs[0] != -1){
 			block_read(root->singleIndirectionPtrs[0], cursor);
-			for(i=0; i < 100; i++){
+			for(i=0; i < 128; i++){
 				if(cursor->ptrs[i] > 0){ //NOTE:this still might seg fault if values in ptrs are not set, I was not sure how to check for that
 					block_read(cursor->ptrs[i], level1);
 					if(strcmp(path+1,level1->path)==0 && level1->mode==0) {
 						found=1;
-						//TODO:update time stamps
+						level1->timeStampM=time(NULL);
+	    			level1->timeStampA=time(NULL);
+						block_write(cursor->ptrs[i], level1);
 					}
 				}
 			}
