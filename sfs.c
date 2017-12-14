@@ -408,8 +408,8 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 
 		//no more space in root
 		if(directfound==0&&indirectfound==0) {
-			log_msg("\n no direct ptrs found\n");
-			return -1;
+			log_msg("\n no direct ptrs or indirect ptrs found\n");
+			return -ENOMEM;
 		}
 
 			//update roots time stamps and size
