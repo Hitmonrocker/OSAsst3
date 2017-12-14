@@ -1065,7 +1065,9 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
 
     				int doubleIndirectBlock=(i-228)/128;
     				int positionInDoubleIndirectBlock=(i-228)%128;
-
+				if(doubleIndirectionBlock >= 128){
+					return -ENOMEM;
+				}
     				if(current->doubleIndirectionPtrs[0]==-1) {
     					int j=1000;
 
