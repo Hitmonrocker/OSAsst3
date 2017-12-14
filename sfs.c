@@ -1221,20 +1221,27 @@ int sfs_opendir(const char *path, struct fuse_file_info *fi)
 
 		int i=0;
 		int found=0;
-		inode* root=(inode*)malloc(sizeof(inode*));
-		inode* level1=(inode*)malloc(sizeof(inode*));
-		pnode* cursor=(pnode*)malloc(sizeof(pnode*));
-
+		char buffer[512];
+		char buffer1[512];
+		char buffer2[512];
+		inode* root=(inode*)buffer;
+		inode* level1=(inode*)buffer1;
+		pnode* cursor=(pnode*)buffer2;
+		log_msg("\ngoing to read block\n");
 		//load root node into root
 		block_read(0, root);
-
+		if(strcmp(root->path, path) == 0){
+			log_msg("root path: %s",root->path);
+			return 0;
+		}
+		log_msg("root path: %s",root->path);
 		//search through all of the direct mapped pointers in root
 		for(i=0; i < 100; i++ ){
 			if(root->directMappedPtrs[i] > 0){
 				if(strcmp(path+1,root->path)==0 && root->mode==0) {
 					found=1;
 					root->timeStampM=time(NULL);
-    			root->timeStampA=time(NULL);
+    					root->timeStampA=time(NULL);
 					block_write(0, root);
 				}
 			}
@@ -1249,7 +1256,7 @@ int sfs_opendir(const char *path, struct fuse_file_info *fi)
 					if(strcmp(path+1,level1->path)==0 && level1->mode==0) {
 						found=1;
 						level1->timeStampM=time(NULL);
-	    			level1->timeStampA=time(NULL);
+	    					level1->timeStampA=time(NULL);
 						block_write(cursor->ptrs[i], level1);
 					}
 				}
@@ -1259,13 +1266,13 @@ int sfs_opendir(const char *path, struct fuse_file_info *fi)
 		//it didnt really make sense to do that since I am looking for a file
 
 		//free pointers
-		free(root);
-		free(cursor);
-		free(level1);
+		//free(root);
+		//free(cursor);
+		//free(level1);
 
 		//check if found then return appropiate value
 		if(found == 0){
-			return -1;  //NOTE:I was not sure if this needed to be the negative errno value
+			return -ENOENT;  //NOTE:I was not sure if this needed to be the negative errno value
 		}
 		else {
 			return retstat;
