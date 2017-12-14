@@ -1424,9 +1424,18 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 int sfs_releasedir(const char *path, struct fuse_file_info *fi)
 {
     int retstat = 0;
-
-
-    return retstat;
+	log_msg("\nsfs_releasedir(path=\"%s\", fi=0x%08x)\n",
+          path, fi);
+	char buffer[512];
+	inode * root = (inode *) buffer;
+	block_read(0,root);
+	if(strcmp(path, root->path) == 0){
+		root->timeStampA=time(NULL);
+		log_msg("\ntimestamp = %ld\n",root->timeStampA);
+		block_write(0,root);
+		return retstat;
+	}
+    return -ENOENT;
 }
 
 struct fuse_operations sfs_oper = {
