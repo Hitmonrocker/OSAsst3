@@ -1168,7 +1168,7 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     			}
 
                 block_write(u,current);
-                
+
     		}
 
     		block_write(0,root);
@@ -1219,8 +1219,53 @@ int sfs_opendir(const char *path, struct fuse_file_info *fi)
     log_msg("\nsfs_opendir(path=\"%s\", fi=0x%08x)\n",
 	  path, fi);
 
+		int i=0;
+		int found=0;
+		inode* root=(inode*)malloc(sizeof(inode*));
+		inode* level1=(inode*)malloc(sizeof(inode*));
+		pnode* cursor=(pnode*)malloc(sizeof(pnode*));
 
-    return retstat;
+		//load root node into root
+		block_read(0, root);
+
+		//search through all of the direct mapped pointers in root
+		for(i=0; i < 100; i++ ){
+			if(root->directMappedPtrs[i] > 0){
+				if(strcmp(path+1,root->path)==0 && root->mode==0) {
+					found=1;
+					//TODO:update time stamps
+				}
+			}
+		}
+
+		//search through all of the indirect poitners
+		if(root->singleIndirectionPtrs[0] != -1){
+			block_read(root->singleIndirectionPtrs[0], cursor);
+			for(i=0; i < 100; i++){
+				if(cursor->ptrs[i] > 0){ //NOTE:this still might seg fault if values in ptrs are not set, I was not sure how to check for that
+					block_read(cursor->ptrs[i], level1);
+					if(strcmp(path+1,level1->path)==0 && level1->mode==0) {
+						found=1;
+						//TODO:update time stamps
+					}
+				}
+			}
+		}
+		//NOTE:I was not sure if i needed to check through the i-nodes as well
+		//it didnt really make sense to do that since I am looking for a file
+
+		//free pointers
+		free(root);
+		free(cursor);
+		free(level1);
+
+		//check if found then return appropiate value
+		if(found == 0){
+			return -1;  //NOTE:I was not sure if this needed to be the negative errno value
+		}
+		else {
+			return retstat;
+		}
 }
 
 /** Read directory
