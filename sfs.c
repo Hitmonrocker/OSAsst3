@@ -1432,10 +1432,9 @@ int sfs_releasedir(const char *path, struct fuse_file_info *fi)
 	if(strcmp(path, root->path) == 0){
 		root->timeStampA=time(NULL);
 		log_msg("\ntimestamp = %ld\n",root->timeStampA);
-		block_write(0,root);
-		return retstat;
+		block_write(0,root);		
 	}
-    return -ENOENT;
+    return retstat;
 }
 
 struct fuse_operations sfs_oper = {
