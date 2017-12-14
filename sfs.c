@@ -596,6 +596,7 @@ int sfs_unlink(const char *path)
 		    	rootDir->timeStampA=time(NULL);
 		    	rootDir->timeStampM=time(NULL);
 		    	rootDir->timeStampC=time(NULL);
+		    	rootDir->size-=cursor->size+512;
 
 		    	block_write(0,rootDir);
 
@@ -1065,7 +1066,7 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
 
     				int doubleIndirectBlock=(i-228)/128;
     				int positionInDoubleIndirectBlock=(i-228)%128;
-				if(doubleIndirectionBlock >= 128){
+				if(doubleIndirectBlock >= 128){
 					return -ENOMEM;
 				}
     				if(current->doubleIndirectionPtrs[0]==-1) {
