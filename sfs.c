@@ -283,7 +283,6 @@ int sfs_getattr(const char *path, struct stat *statbuf)
 			statbuf->st_size=0;
 			statbuf->st_mtime=time(NULL);*/
     		//int i = sfs_create(path, S_IRUSR |S_IWUSR, NULL);
-            log_msg("\nnot found\n");
     		return -ENOENT;
     	}
 
@@ -408,7 +407,6 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 
 		//no more space in root
 		if(directfound==0&&indirectfound==0) {
-			log_msg("\n no direct ptrs or indirect ptrs found\n");
 			return -ENOMEM;
 		}
 
@@ -447,7 +445,6 @@ int sfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 
 	    		//no more room
 	    		if(k>=128) {
-	    			log_msg("\n no indirect ptrs found : %d\n", root->singleIndirectionPtrs[0]);
 	    			return -1;
 	    		}
 	    	}
@@ -526,7 +523,6 @@ int sfs_unlink(const char *path)
 
 
 
-		    	log_msg("\ntest5.1 \n");
 
 		    	for(h;h<100;h++) {
 
@@ -545,7 +541,6 @@ int sfs_unlink(const char *path)
 		    			//Compares paths for match
 		    			//log_msg("\n temp path: %s, path + 1 : %s\n",tempNode->path,path+1);
 		    			if(strcmp(tempNode->path,path+1)==0) {
-		    				log_msg("\ntest5.3\n");
 		    				rootDir->directMappedPtrs[h]=-1;
 		    				found=1;
 		    				break;
@@ -553,9 +548,7 @@ int sfs_unlink(const char *path)
 		    		}
 		    	}
 
-		    	log_msg("\ntest5.4\n");
 		    	if(found==0) {
-		    		log_msg("\npassed 5.4\n");
 		    		int pNodeBlock=rootDir->singleIndirectionPtrs[0];
 
 			    	if(pNodeBlock>0) {
@@ -581,17 +574,12 @@ int sfs_unlink(const char *path)
 				    			if(strcmp(tempNode->path,path+1)==0) {
 				    				pNode->ptrs[c]=-1;
 				    				int writeAmount=block_write(pNodeBlock,pNode);
-				    				log_msg("\nwrite pnode block: %d : %d\n",pNodeBlock,c);
-				    				if(c!=0) {
-				    					log_msg("\nptr before status: %d\n",pNode->ptrs[c-1]);
-				    				}
 				    				break;
 				    			}
 				    		}
 				    	}
 			    	}
 		    	}
-		    	log_msg("\ntest5.5\n");
 
 		    	rootDir->timeStampA=time(NULL);
 		    	rootDir->timeStampM=time(NULL);
@@ -600,7 +588,6 @@ int sfs_unlink(const char *path)
 
 		    	block_write(0,rootDir);
 
-				log_msg("sfs_unlink(path=\"%s\")\n", path);
 				cursor->mode=2;
 				cursor->size=-1;
 				cursor->userId=getuid();
@@ -664,7 +651,6 @@ int sfs_unlink(const char *path)
 		}
 
 
-	log_msg("\ntest6\n");
 	free(cursor);
 	free(level1);
 	free(level2);
@@ -939,7 +925,6 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
 
     		for(i;i<=lastBlock;i++) {
 
-    			log_msg("\nOn block: %d\n",i);
 
     			//direct
     			if(i<100) {
@@ -1062,8 +1047,6 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     			//double indirect
     			else {
 
-    				log_msg("\nDobule Indirect\n");
-
     				int doubleIndirectBlock=(i-228)/128;
     				int positionInDoubleIndirectBlock=(i-228)%128;
 				if(doubleIndirectBlock >= 128){
@@ -1164,7 +1147,6 @@ int sfs_write(const char *path, const char *buf, size_t size, off_t offset,
     					amountWritten+=writeSize;
     				}
 
-    				log_msg("\n final pNode written \n");
 
     				block_write(pNode2->ptrs[positionInDoubleIndirectBlock],buffer5);
 
@@ -1230,14 +1212,11 @@ int sfs_opendir(const char *path, struct fuse_file_info *fi)
 		inode* root=(inode*)buffer;
 		inode* level1=(inode*)buffer1;
 		pnode* cursor=(pnode*)buffer2;
-		log_msg("\ngoing to read block\n");
 		//load root node into root
 		block_read(0, root);
 		if(strcmp(root->path, path) == 0){
-			log_msg("root path: %s",root->path);
 			return 0;
 		}
-		log_msg("root path: %s",root->path);
 		//search through all of the direct mapped pointers in root
 		for(i=0; i < 100; i++ ){
 			if(root->directMappedPtrs[i] > 0){
@@ -1306,7 +1285,6 @@ int sfs_opendir(const char *path, struct fuse_file_info *fi)
 int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset,
 	       struct fuse_file_info *fi)
 {
-        log_msg("\nreaddir\n");
         int retstat = 0;
 
     	log_msg("\nsfs_readdir(path=\"%s\", buf=0x%08x, filler=0x%08x, offset=%lld, fi=0x%08x)\n",path,  buf, filler,  offset, fi);
@@ -1411,7 +1389,7 @@ int sfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 					//log_msg("\nerror returned: ENOMEM. When inserting file with path:\"%s\"\n",tempNode->path);
         				return -ENOMEM;
 				}
-			    	log_msg("\npath=\"%s\"\n",tempNode->path);
+			    	
     			}
     		}
 
@@ -1434,7 +1412,6 @@ int sfs_releasedir(const char *path, struct fuse_file_info *fi)
 	block_read(0,root);
 	if(strcmp(path, root->path) == 0){
 		root->timeStampA=time(NULL);
-		log_msg("\ntimestamp = %ld\n",root->timeStampA);
 		block_write(0,root);		
 	}
     return retstat;
